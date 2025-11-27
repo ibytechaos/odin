@@ -43,39 +43,59 @@ A complete end-to-end example demonstrating Odin framework with a React frontend
 
 ## Quick Start
 
-### 1. Start Backend
+### Option 1: Using start.sh (Recommended)
 
 ```bash
-# From the odin project root
 cd examples/demo
 
-# Install Python dependencies (if not already)
-pip install copilotkit fastapi uvicorn
+# Copy and configure environment
+cp .env.example .env
 
-# Start the backend
-PYTHONPATH=../../src python main.py
+# Install frontend dependencies
+cd frontend && npm install && cd ..
+
+# Start both backend and frontend
+./start.sh
+
+# Or start individually:
+./start.sh backend   # Backend only
+./start.sh frontend  # Frontend only
 ```
 
-The backend will start on http://localhost:8000
-
-### 2. Start Frontend
+### Option 2: Using Supervisor
 
 ```bash
-# In another terminal
-cd examples/demo/frontend
+cd examples/demo
 
-# Install dependencies
-npm install
+# Set environment variables
+export HOST=0.0.0.0 BACKEND_PORT=8000 FRONTEND_PORT=3000 PROTOCOL=copilotkit
 
-# Start development server
-npm run dev
+# Start with supervisor
+supervisord -c supervisord.conf
+
+# Control services
+supervisorctl -c supervisord.conf status
+supervisorctl -c supervisord.conf restart backend
+supervisorctl -c supervisord.conf stop all
 ```
 
-The frontend will start on http://localhost:3000
+### Option 3: Manual Start
 
-### 3. Open Browser
+```bash
+# Terminal 1: Backend
+cd examples/demo
+PYTHONPATH=../../src python main.py
 
-Navigate to http://localhost:3000 and start chatting!
+# Terminal 2: Frontend
+cd examples/demo/frontend
+npm install && npm run dev
+```
+
+### Access the Application
+
+- **Frontend**: <http://localhost:3000>
+- **Backend**: <http://localhost:8000>
+- **Health Check**: <http://localhost:8000/health>
 
 ## What You Can Ask
 

@@ -11,16 +11,30 @@ A modern, protocol-agnostic agent development framework with first-class support
   - **MCP**: Claude Desktop integration
 - **Zero-Boilerplate Tools**: `@tool` decorator generates schemas from type hints
 - **Production-Ready Observability**: OpenTelemetry, Prometheus, structured logging
-- **Modern Tooling**: Python 3.12+, async-first, uv package manager
+- **Modern Tooling**: Python 3.14+, async-first, uv package manager
+- **CLI Scaffolding**: `odin create` command for quick project setup
 
 ## Quick Start
 
 ### Installation
 
 ```bash
-git clone https://github.com/yourusername/odin.git
-cd odin
-uv sync
+pip install odin-agent
+# or
+uv add odin-agent
+```
+
+### Create a New Project
+
+```bash
+# Create a full-stack project (backend + frontend)
+odin create my-agent
+
+# Create backend only
+odin create my-agent --backend
+
+# Create frontend only
+odin create my-agent --frontend
 ```
 
 ### Create a Plugin
@@ -50,16 +64,18 @@ class WeatherPlugin(DecoratorPlugin):
 ### Run the Demo
 
 ```bash
-# Start backend (CopilotKit)
 cd examples/demo
-PYTHONPATH=../../src python main.py
 
-# Start frontend (in another terminal)
-cd examples/demo/frontend
-npm install && npm run dev
+# Option 1: Using start script
+cp .env.example .env
+./start.sh
 
-# Open http://localhost:3000
+# Option 2: Manual start
+PYTHONPATH=../../src python main.py  # Backend
+cd frontend && npm install && npm run dev  # Frontend
 ```
+
+Open <http://localhost:3000> to start chatting!
 
 ### Protocol Options
 
