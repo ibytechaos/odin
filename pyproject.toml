@@ -63,6 +63,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# CopilotKit integration
+copilotkit = [
+    "copilotkit>=0.1.39",
+]
+
 # Development dependencies
 dev = [
     "pytest>=8.3.0",
