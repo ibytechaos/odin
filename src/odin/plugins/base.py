@@ -209,3 +209,60 @@ class AgentPlugin(ABC):
             True if initialized
         """
         return self._initialized
+
+
+class DecoratorPlugin(AgentPlugin):
+    """Base class for plugins using @tool decorator.
+
+    This class automatically discovers and manages tools defined with
+    the @tool decorator, eliminating boilerplate code.
+
+    Example:
+        ```python
+        from odin.plugins import DecoratorPlugin
+        from odin.decorators import tool
+
+        class MyPlugin(DecoratorPlugin):
+            @property
+            def name(self) -> str:
+                return "my_plugin"
+
+            @property
+            def version(self) -> str:
+                return "1.0.0"
+
+            @tool(description="Say hello")
+            async def say_hello(self, name: str) -> dict:
+                return {"message": f"Hello, {name}!"}
+        ```
+    """
+
+    async def get_tools(self) -> list[Tool]:
+        """Auto-discover tools from @tool decorated methods."""
+        from odin.decorators.tool import get_tool_from_function, is_tool
+
+        tools = []
+        for attr_name in dir(self):
+            if attr_name.startswith("_"):
+                continue
+            attr = getattr(self, attr_name)
+            if callable(attr) and is_tool(attr):
+                tool_def = get_tool_from_function(attr)
+                if tool_def:
+                    tools.append(tool_def)
+        return tools
+
+    async def execute_tool(self, tool_name: str, **kwargs: Any) -> dict[str, Any]:
+        """Execute a @tool decorated method by name."""
+        from odin.decorators.tool import get_tool_from_function, is_tool
+
+        for attr_name in dir(self):
+            if attr_name.startswith("_"):
+                continue
+            attr = getattr(self, attr_name)
+            if callable(attr) and is_tool(attr):
+                tool_def = get_tool_from_function(attr)
+                if tool_def and tool_def.name == tool_name:
+                    return await attr(**kwargs)
+
+        raise ValueError(f"Tool '{tool_name}' not found in plugin '{self.name}'")

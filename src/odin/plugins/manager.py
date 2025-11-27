@@ -9,7 +9,7 @@ from typing import Any
 
 from odin.errors import ErrorCode, ExecutionError, PluginError
 from odin.logging import get_logger
-from odin.plugins.base import AgentPlugin, Tool
+from odin.plugins.base import AgentPlugin, DecoratorPlugin, Tool
 from odin.tracing import get_metrics_collector, traced
 
 logger = get_logger(__name__)
@@ -313,14 +313,15 @@ class PluginManager:
             sys.modules[spec.name] = module
             spec.loader.exec_module(module)
 
-            # Find plugin class
+            # Find plugin class (excluding base classes)
             plugin_class = None
+            base_classes = {AgentPlugin, DecoratorPlugin}
             for name in dir(module):
                 obj = getattr(module, name)
                 if (
                     isinstance(obj, type)
                     and issubclass(obj, AgentPlugin)
-                    and obj is not AgentPlugin
+                    and obj not in base_classes
                 ):
                     plugin_class = obj
                     break
