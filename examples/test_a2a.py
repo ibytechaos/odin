@@ -3,6 +3,7 @@
 import asyncio
 
 from odin import Odin, tool
+from odin.logging import get_logger
 from odin.plugins import AgentPlugin
 from odin.protocols.a2a import A2AServer
 from odin.protocols.a2a.models import (
@@ -11,6 +12,8 @@ from odin.protocols.a2a.models import (
     TaskState,
     TextPart,
 )
+
+logger = get_logger(__name__)
 
 
 class TestPlugin(AgentPlugin):
@@ -63,8 +66,8 @@ class TestPlugin(AgentPlugin):
 
 async def main():
     """Test A2A protocol implementation."""
-    print("Testing A2A Protocol Implementation")
-    print("=" * 70)
+    logger.info("Testing A2A Protocol Implementation")
+    logger.info("=" * 70)
 
     # Create Odin app
     app = Odin()
@@ -77,23 +80,23 @@ async def main():
     # Create A2A server
     a2a_server = A2AServer(app, name="test-agent", description="Test A2A agent")
 
-    print("\n[1/5] Verifying A2A server creation")
-    print(f"  Server app: {a2a_server.app.title}")
-    print(f"  Task manager: {a2a_server.task_manager}")
-    print(f"  Agent card generator: {a2a_server.agent_card_generator}")
-    print("  ✓ A2A server created successfully")
+    logger.info("\n[1/5] Verifying A2A server creation")
+    logger.info(f"  Server app: {a2a_server.app.title}")
+    logger.info(f"  Task manager: {a2a_server.task_manager}")
+    logger.info(f"  Agent card generator: {a2a_server.agent_card_generator}")
+    logger.info("  ✓ A2A server created successfully")
 
-    print("\n[2/5] Testing Agent Card generation")
+    logger.info("\n[2/5] Testing Agent Card generation")
     agent_card = await a2a_server.agent_card_generator.generate()
-    print(f"  Name: {agent_card.name}")
-    print(f"  Description: {agent_card.description}")
-    print(f"  Protocol Version: {agent_card.protocolVersion}")
-    print(f"  Skills: {len(agent_card.skills)}")
+    logger.info(f"  Name: {agent_card.name}")
+    logger.info(f"  Description: {agent_card.description}")
+    logger.info(f"  Protocol Version: {agent_card.protocolVersion}")
+    logger.info(f"  Skills: {len(agent_card.skills)}")
     for skill in agent_card.skills:
-        print(f"    - {skill.name}: {skill.description}")
-    print("  ✓ Agent card generated successfully")
+        logger.info(f"    - {skill.name}: {skill.description}")
+    logger.info("  ✓ Agent card generated successfully")
 
-    print("\n[3/5] Testing Task creation")
+    logger.info("\n[3/5] Testing Task creation")
     message = Message(
         role=MessageRole.USER,
         parts=[TextPart(text="Test message")],
@@ -102,59 +105,59 @@ async def main():
         context_id="test-context",
         initial_message=message,
     )
-    print(f"  Task ID: {task.id}")
-    print(f"  Context ID: {task.contextId}")
-    print(f"  Status: {task.status.state}")
-    print(f"  History: {len(task.history) if task.history else 0} messages")
-    print("  ✓ Task created successfully")
+    logger.info(f"  Task ID: {task.id}")
+    logger.info(f"  Context ID: {task.contextId}")
+    logger.info(f"  Status: {task.status.state}")
+    logger.info(f"  History: {len(task.history) if task.history else 0} messages")
+    logger.info("  ✓ Task created successfully")
 
-    print("\n[4/5] Testing Task status update")
+    logger.info("\n[4/5] Testing Task status update")
     updated_task = await a2a_server.task_manager.update_task_status(
         task.id,
         TaskState.WORKING,
         "Processing task",
     )
     assert updated_task is not None
-    print(f"  Status: {updated_task.status.state}")
-    print(f"  Message: {updated_task.status.message}")
-    print("  ✓ Task status updated successfully")
+    logger.info(f"  Status: {updated_task.status.state}")
+    logger.info(f"  Message: {updated_task.status.message}")
+    logger.info("  ✓ Task status updated successfully")
 
-    print("\n[5/5] Testing Task listing")
+    logger.info("\n[5/5] Testing Task listing")
     tasks, total, has_more = await a2a_server.task_manager.list_tasks(
         context_id="test-context"
     )
-    print(f"  Total tasks: {total}")
-    print(f"  Retrieved: {len(tasks)}")
-    print(f"  Has more: {has_more}")
-    print("  ✓ Task listing works correctly")
+    logger.info(f"  Total tasks: {total}")
+    logger.info(f"  Retrieved: {len(tasks)}")
+    logger.info(f"  Has more: {has_more}")
+    logger.info("  ✓ Task listing works correctly")
 
     await app.shutdown()
 
     print("\n" + "=" * 70)
-    print("A2A Protocol Tests: PASSED")
-    print("=" * 70)
+    logger.info("A2A Protocol Tests: PASSED")
+    logger.info("=" * 70)
 
-    print("\nA2A Server Features:")
-    print("  ✓ Agent Card generation (self-describing)")
-    print("  ✓ Task creation and lifecycle management")
-    print("  ✓ Message handling")
-    print("  ✓ Task status updates")
-    print("  ✓ Task listing and filtering")
-    print("  ✓ HTTP/REST endpoints")
-    print("  ✓ Server-Sent Events (SSE) streaming")
+    logger.info("\nA2A Server Features:")
+    logger.info("  ✓ Agent Card generation (self-describing)")
+    logger.info("  ✓ Task creation and lifecycle management")
+    logger.info("  ✓ Message handling")
+    logger.info("  ✓ Task status updates")
+    logger.info("  ✓ Task listing and filtering")
+    logger.info("  ✓ HTTP/REST endpoints")
+    logger.info("  ✓ Server-Sent Events (SSE) streaming")
 
-    print("\nA2A Protocol Endpoints:")
-    print("  - GET  /.well-known/agent-card")
-    print("  - POST /message/send")
-    print("  - POST /message/send/streaming")
-    print("  - GET  /tasks/{id}")
-    print("  - GET  /tasks")
-    print("  - GET  /tasks/{id}/subscribe")
+    logger.info("\nA2A Protocol Endpoints:")
+    logger.info("  - GET  /.well-known/agent-card")
+    logger.info("  - POST /message/send")
+    logger.info("  - POST /message/send/streaming")
+    logger.info("  - GET  /tasks/{id}")
+    logger.info("  - GET  /tasks")
+    logger.info("  - GET  /tasks/{id}/subscribe")
 
-    print("\nTo test with a real server:")
-    print("  1. Run: python examples/a2a_server_demo.py")
-    print("  2. Run: python examples/a2a_client_demo.py")
-    print("  3. Or use curl to test endpoints")
+    logger.info("\nTo test with a real server:")
+    logger.info("  1. Run: python examples/a2a_server_demo.py")
+    logger.info("  2. Run: python examples/a2a_client_demo.py")
+    logger.info("  3. Or use curl to test endpoints")
 
 
 if __name__ == "__main__":

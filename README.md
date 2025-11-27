@@ -8,6 +8,7 @@ A modern, protocol-agnostic agent development framework with first-class support
 - **Multi-Protocol Support**:
   - **MCP (Model Context Protocol)**: Expose tools to Claude Desktop and other MCP clients
   - **A2A (Agent-to-Agent)**: Enable agents to communicate using the industry-standard A2A protocol
+  - **AG-UI (Agent-User Interaction)**: Real-time generative UI with Server-Sent Events
   - **HTTP/REST**: Traditional REST APIs with OpenAPI documentation
 - **Zero-Boilerplate Tools**: `@tool` decorator automatically generates schemas from type hints and docstrings
 - **CrewAI Integration**: First-class support for CrewAI agent orchestration
@@ -106,7 +107,27 @@ a2a_server = A2AServer(app, name="weather-agent")
 await a2a_server.run(host="0.0.0.0", port=8000)
 ```
 
+#### Expose via AG-UI (for Generative UI)
+
+```python
+from odin.protocols.agui import AGUIServer
+
+app = Odin()
+await app.initialize()
+await app.register_plugin(WeatherPlugin())
+
+# Start AG-UI server (HTTP + SSE)
+agui_server = AGUIServer(app, path="/")
+await agui_server.run(host="0.0.0.0", port=8000)
+```
+
 See [examples/](examples/) for complete working examples.
+
+**Try the complete end-to-end example:**
+```bash
+# All protocols in one agent (MCP, A2A, AG-UI)
+PYTHONPATH=src uv run python examples/end_to_end_agent.py --protocol agui
+```
 
 ## Architecture
 

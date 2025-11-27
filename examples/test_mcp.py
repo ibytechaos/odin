@@ -6,8 +6,11 @@ Tests the MCP server functionality programmatically.
 import asyncio
 
 from odin import Odin, tool
+from odin.logging import get_logger
 from odin.plugins import AgentPlugin
 from odin.protocols.mcp import MCPServer
+
+logger = get_logger(__name__)
 
 
 class TestPlugin(AgentPlugin):
@@ -56,8 +59,8 @@ class TestPlugin(AgentPlugin):
 
 async def main():
     """Test MCP server."""
-    print("Testing MCP Server Integration")
-    print("=" * 60)
+    logger.info("Testing MCP Server Integration")
+    logger.info("=" * 70)
 
     # Create app
     app = Odin()
@@ -70,35 +73,35 @@ async def main():
     # Create MCP server
     mcp_server = MCPServer(app, name="test-server")
 
-    print("\n[1/2] Verifying MCP server creation")
-    print(f"  Server name: {mcp_server.server.name}")
-    print(f"  Odin app: {mcp_server.odin_app}")
-    print("  ✓ MCP server created successfully")
+    logger.info("\n[1/2] Verifying MCP server creation")
+    logger.info(f"  Server name: {mcp_server.server.name}")
+    logger.info(f"  Odin app: {mcp_server.odin_app}")
+    logger.info("  ✓ MCP server created successfully")
 
-    print("\n[2/2] Verifying tools accessible via Odin")
+    logger.info("\n[2/2] Verifying tools accessible via Odin")
     tools = app.list_tools()
-    print(f"  Found {len(tools)} tools:")
+    logger.info(f"  Found {len(tools)} tools:")
     for t in tools:
-        print(f"    - {t['name']}: {t['description']}")
-    print("  ✓ Tools registered correctly")
+        logger.info(f"    - {t['name']}: {t['description']}")
+    logger.info("  ✓ Tools registered correctly")
 
     print("\n" + "=" * 60)
-    print("MCP Server Integration Tests: PASSED")
-    print("=" * 60)
+    logger.info("MCP Server Integration Tests: PASSED")
+    logger.info("=" * 70)
 
-    print("\nMCP Server Features:")
-    print("  ✓ Automatic tool conversion (Odin → MCP format)")
-    print("  ✓ Tool listing via tools/list")
-    print("  ✓ Tool execution via tools/call")
-    print("  ✓ JSON-RPC 2.0 compatible")
-    print("  ✓ Stdio transport (for Claude Desktop)")
-    print("  ✓ SSE transport (for web clients)")
+    logger.info("\nMCP Server Features:")
+    logger.info("  ✓ Automatic tool conversion (Odin → MCP format)")
+    logger.info("  ✓ Tool listing via tools/list")
+    logger.info("  ✓ Tool execution via tools/call")
+    logger.info("  ✓ JSON-RPC 2.0 compatible")
+    logger.info("  ✓ Stdio transport (for Claude Desktop)")
+    logger.info("  ✓ SSE transport (for web clients)")
 
-    print("\nTo use with Claude Desktop:")
-    print("  1. Copy examples/claude_desktop_config.json")
-    print("  2. Update paths in the config")
-    print("  3. Restart Claude Desktop")
-    print("  4. Your tools will appear in Claude!")
+    logger.info("\nTo use with Claude Desktop:")
+    logger.info("  1. Copy examples/claude_desktop_config.json")
+    logger.info("  2. Update paths in the config")
+    logger.info("  3. Restart Claude Desktop")
+    logger.info("  4. Your tools will appear in Claude!")
 
     await app.shutdown()
 
