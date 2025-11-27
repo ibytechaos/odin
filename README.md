@@ -5,11 +5,19 @@ A modern, protocol-agnostic agent development framework with first-class support
 ## Features
 
 - **Plugin-First Architecture**: All capabilities expressed through a unified plugin interface
-- **Protocol-Agnostic**: Native support for MCP, A2A, HTTP/REST, and WebSocket protocols
+- **Multi-Protocol Support**:
+  - **MCP (Model Context Protocol)**: Expose tools to Claude Desktop and other MCP clients
+  - **A2A (Agent-to-Agent)**: Enable agents to communicate using the industry-standard A2A protocol
+  - **HTTP/REST**: Traditional REST APIs with OpenAPI documentation
+- **Zero-Boilerplate Tools**: `@tool` decorator automatically generates schemas from type hints and docstrings
 - **CrewAI Integration**: First-class support for CrewAI agent orchestration
-- **Production-Ready**: Built-in logging, tracing (OpenTelemetry), error handling, and monitoring
+- **Production-Ready Observability**:
+  - OpenTelemetry tracing and metrics
+  - AI/LLM-specific metrics (token counting, cost tracking, latency)
+  - Prometheus export
+  - Structured logging with structlog
 - **Modern Tooling**: Built with Python 3.12+, uv, and async-first design
-- **Developer Experience**: Rich CLI, auto-generated docs, and comprehensive testing
+- **Self-Describing**: Agent Cards automatically generated from registered tools
 
 ## Quick Start
 
@@ -44,20 +52,61 @@ cp .env.example .env
 
 ### Basic Usage
 
+#### Create a Plugin with Tools
+
 ```python
-from odin import Odin
-from odin.plugins.crewai import CrewAIPlugin
+from odin import Odin, tool, AgentPlugin
 
-# Initialize framework
-app = Odin()
+class WeatherPlugin(AgentPlugin):
+    @property
+    def name(self) -> str:
+        return "weather"
 
-# Load CrewAI plugin
-crewai_plugin = CrewAIPlugin()
-app.register_plugin(crewai_plugin)
+    @property
+    def version(self) -> str:
+        return "1.0.0"
 
-# Start MCP server
-await app.serve_mcp(port=8001)
+    @tool()
+    async def get_weather(self, location: str, units: str = "celsius") -> dict:
+        """Get current weather for a location.
+
+        Args:
+            location: City name or coordinates
+            units: Temperature units (celsius or fahrenheit)
+        """
+        # Your implementation here
+        return {"location": location, "temp": 22, "units": units}
 ```
+
+#### Expose via MCP (for Claude Desktop)
+
+```python
+from odin.protocols.mcp import MCPServer
+
+app = Odin()
+await app.initialize()
+await app.register_plugin(WeatherPlugin())
+
+# Start MCP server (stdio for Claude Desktop)
+mcp_server = MCPServer(app, name="weather-agent")
+await mcp_server.run()
+```
+
+#### Expose via A2A (for Agent-to-Agent Communication)
+
+```python
+from odin.protocols.a2a import A2AServer
+
+app = Odin()
+await app.initialize()
+await app.register_plugin(WeatherPlugin())
+
+# Start A2A server (HTTP + SSE)
+a2a_server = A2AServer(app, name="weather-agent")
+await a2a_server.run(host="0.0.0.0", port=8000)
+```
+
+See [examples/](examples/) for complete working examples.
 
 ## Architecture
 

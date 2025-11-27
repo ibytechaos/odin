@@ -32,6 +32,8 @@ class Odin:
         ```
     """
 
+    version = "0.1.0"  # Framework version
+
     def __init__(self, settings: Settings | None = None) -> None:
         """Initialize Odin framework.
 
