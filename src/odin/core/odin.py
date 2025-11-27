@@ -6,6 +6,7 @@ from odin.config import Settings, get_settings
 from odin.logging import get_logger, setup_logging
 from odin.plugins import AgentPlugin
 from odin.plugins.manager import PluginManager
+from odin.tracing import setup_tracing, shutdown_tracing
 
 logger = get_logger(__name__)
 
@@ -53,6 +54,11 @@ class Odin:
             env=self.settings.env,
         )
 
+        # Setup tracing if enabled
+        if self.settings.otel_enabled:
+            exporter_type = "console" if self.settings.is_development() else "otlp"
+            setup_tracing(self.settings, exporter_type=exporter_type)
+
         # Initialize plugin manager
         self._plugin_manager = PluginManager()
         self._initialized = False
@@ -76,6 +82,11 @@ class Odin:
         """Shutdown framework and cleanup resources."""
         logger.info("Shutting down Odin framework")
         await self._plugin_manager.shutdown_all()
+
+        # Shutdown tracing
+        if self.settings.otel_enabled:
+            shutdown_tracing()
+
         self._initialized = False
         logger.info("Odin framework shut down successfully")
 

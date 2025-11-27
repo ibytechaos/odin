@@ -3,14 +3,17 @@
 import importlib
 import importlib.util
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
 from odin.errors import ErrorCode, ExecutionError, PluginError
 from odin.logging import get_logger
 from odin.plugins.base import AgentPlugin, Tool
+from odin.tracing import get_metrics_collector, traced
 
 logger = get_logger(__name__)
+metrics = get_metrics_collector()
 
 
 class PluginManager:
@@ -87,6 +90,9 @@ class PluginManager:
                 details={"plugin": plugin.name, "error": str(e)},
             ) from e
 
+        # Record metrics
+        metrics.record_plugin_loaded(plugin.name, loaded=True)
+
         logger.info(
             "Plugin registered successfully",
             plugin=plugin.name,
@@ -134,6 +140,9 @@ class PluginManager:
 
         # Remove plugin
         del self._plugins[plugin_name]
+
+        # Record metrics
+        metrics.record_plugin_loaded(plugin_name, loaded=False)
 
         logger.info("Plugin unregistered", plugin=plugin_name)
 
@@ -234,11 +243,18 @@ class PluginManager:
             parameters=kwargs,
         )
 
+        # Record metrics with timing
+        start_time = time.time()
+        success = False
+        error_type = None
+
         try:
             result = await plugin.execute_tool(tool_name, **kwargs)
+            success = True
             logger.info("Tool executed successfully", tool=tool_name)
             return result
         except Exception as e:
+            error_type = e.__class__.__name__
             logger.error(
                 "Tool execution failed",
                 tool=tool_name,
@@ -254,6 +270,15 @@ class PluginManager:
                     "error": str(e),
                 },
             ) from e
+        finally:
+            latency = time.time() - start_time
+            metrics.record_tool_execution(
+                tool_name=tool_name,
+                plugin_name=plugin_name,
+                success=success,
+                latency=latency,
+                error_type=error_type,
+            )
 
     async def load_plugin_from_file(self, file_path: Path) -> None:
         """Load a plugin from a Python file.
