@@ -122,7 +122,9 @@ npm install && npm run dev
 
 ```
 demo/
-├── app.yaml                 # Odin configuration (optional)
+├── .env.example             # Environment configuration
+├── start.sh                 # Startup script
+├── supervisord.conf         # Supervisor configuration (optional)
 ├── main.py                  # Backend entry point
 ├── plugins/
 │   ├── __init__.py

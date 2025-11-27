@@ -1,9 +1,15 @@
 """CopilotKit adapter for Odin framework.
 
-Converts Odin tools to CopilotKit actions and provides FastAPI integration.
+Converts Odin tools to CopilotKit actions and provides FastAPI integration
+with a LangGraph-based agent using the AG-UI protocol.
+
+References:
+- https://docs.copilotkit.ai/coagents/langgraph/langgraph-python
+- https://pypi.org/project/ag-ui-langgraph/
 """
 
-from typing import Any
+import os
+from typing import Any, Annotated
 
 from fastapi import FastAPI
 
@@ -13,11 +19,143 @@ from odin.logging import get_logger
 logger = get_logger(__name__)
 
 
-class CopilotKitAdapter:
-    """Adapter to expose Odin tools as CopilotKit actions.
+def create_odin_langgraph_agent(odin_app: Odin):
+    """Create a LangGraph agent that uses Odin tools.
 
-    This adapter converts Odin's tool definitions to CopilotKit's Action format
-    and provides FastAPI endpoint integration.
+    Args:
+        odin_app: Odin framework instance
+
+    Returns:
+        Compiled LangGraph StateGraph
+    """
+    from langchain_openai import ChatOpenAI
+    from langchain_core.messages import SystemMessage, ToolMessage
+    from langgraph.graph import StateGraph, START, END
+    from langgraph.graph.message import add_messages
+    from typing import TypedDict
+    import json
+
+    # Create tools from Odin
+    odin_tools = []
+
+    for tool_def in odin_app.list_tools():
+        tool_name = tool_def["name"]
+
+        # Create LangChain tool using StructuredTool
+        from langchain_core.tools import StructuredTool
+        import asyncio
+
+        # Wrapper to handle async execution
+        def make_sync_wrapper(t_name):
+            async def async_tool(**kwargs):
+                result = await odin_app.execute_tool(t_name, **kwargs)
+                return json.dumps(result) if isinstance(result, dict) else str(result)
+
+            def sync_wrapper(**kwargs):
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        future = pool.submit(asyncio.run, async_tool(**kwargs))
+                        return future.result()
+                return asyncio.run(async_tool(**kwargs))
+
+            return sync_wrapper
+
+        lc_tool = StructuredTool.from_function(
+            func=make_sync_wrapper(tool_name),
+            name=tool_name,
+            description=tool_def.get("description", ""),
+            args_schema=None,
+        )
+        odin_tools.append(lc_tool)
+
+    # Get LLM configuration from environment
+    model = os.getenv("OPENAI_MODEL", "gpt-4o")
+    base_url = os.getenv("OPENAI_BASE_URL")
+
+    llm_kwargs = {"model": model}
+    if base_url:
+        llm_kwargs["base_url"] = base_url
+
+    llm = ChatOpenAI(**llm_kwargs)
+
+    # Bind tools to LLM
+    if odin_tools:
+        llm_with_tools = llm.bind_tools(odin_tools)
+    else:
+        llm_with_tools = llm
+
+    # Define state
+    class AgentState(TypedDict):
+        messages: Annotated[list, add_messages]
+
+    # Define the agent node
+    def agent_node(state: AgentState):
+        messages = state["messages"]
+
+        # Add system message if not present
+        if not messages or not isinstance(messages[0], SystemMessage):
+            system_msg = SystemMessage(content="""You are a helpful AI assistant with access to various tools.
+Use the available tools to help answer user questions about weather, calendar events, and data analytics.
+Always be helpful and provide clear, concise responses.""")
+            messages = [system_msg] + list(messages)
+
+        response = llm_with_tools.invoke(messages)
+        return {"messages": [response]}
+
+    # Define tool execution node
+    def tool_node(state: AgentState):
+        messages = state["messages"]
+        last_message = messages[-1]
+
+        if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+            return {"messages": []}
+
+        tool_results = []
+        for tool_call in last_message.tool_calls:
+            tool_name = tool_call["name"]
+            tool_args = tool_call["args"]
+
+            try:
+                import asyncio
+                result = asyncio.run(odin_app.execute_tool(tool_name, **tool_args))
+                result_str = json.dumps(result) if isinstance(result, dict) else str(result)
+            except Exception as e:
+                result_str = f"Error executing tool: {str(e)}"
+
+            tool_results.append(
+                ToolMessage(content=result_str, tool_call_id=tool_call["id"])
+            )
+
+        return {"messages": tool_results}
+
+    # Define routing
+    def should_continue(state: AgentState):
+        messages = state["messages"]
+        last_message = messages[-1]
+
+        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+            return "tools"
+        return END
+
+    # Build graph
+    graph = StateGraph(AgentState)
+    graph.add_node("agent", agent_node)
+    graph.add_node("tools", tool_node)
+
+    graph.add_edge(START, "agent")
+    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+    graph.add_edge("tools", "agent")
+
+    return graph.compile()
+
+
+class CopilotKitAdapter:
+    """Adapter to expose Odin tools via CopilotKit/AG-UI protocol.
+
+    This adapter creates a LangGraph agent with Odin tools and exposes it
+    via the AG-UI protocol using ag_ui_langgraph.
 
     Example:
         ```python
@@ -43,158 +181,67 @@ class CopilotKitAdapter:
             odin_app: Odin framework instance
         """
         self.odin_app = odin_app
-        self._sdk = None
+        self._graph = None
+        self._agent = None
 
-    def _convert_odin_tool_to_copilotkit_action(self, tool: dict) -> Any:
-        """Convert an Odin tool definition to a CopilotKit Action.
-
-        Args:
-            tool: Odin tool dictionary
+    def get_graph(self):
+        """Get LangGraph agent graph.
 
         Returns:
-            CopilotKit Action object
+            Compiled LangGraph StateGraph
+        """
+        if self._graph is None:
+            self._graph = create_odin_langgraph_agent(self.odin_app)
+            logger.info("LangGraph agent created")
+        return self._graph
+
+    def get_agent(self):
+        """Get AG-UI LangGraph agent.
+
+        Returns:
+            LangGraphAgent instance from ag_ui_langgraph
         """
         try:
-            from copilotkit import Action as CopilotAction
+            from ag_ui_langgraph import LangGraphAgent
         except ImportError:
             raise ImportError(
-                "copilotkit package is required. Install with: pip install copilotkit"
+                "ag-ui-langgraph package is required. Install with: pip install ag-ui-langgraph"
             )
 
-        # Convert parameters to CopilotKit format
-        parameters = []
-        for param in tool.get("parameters", []):
-            param_def = {
-                "name": param["name"],
-                "type": self._map_type(param.get("type", "string")),
-                "description": param.get("description", ""),
-                "required": param.get("required", False),
-            }
-            parameters.append(param_def)
-
-        # Create handler that calls Odin's execute_tool
-        tool_name = tool["name"]
-
-        async def handler(**kwargs):
-            logger.info(
-                "CopilotKit action called",
-                tool=tool_name,
-                params=list(kwargs.keys()),
+        if self._agent is None:
+            graph = self.get_graph()
+            self._agent = LangGraphAgent(
+                name="odin_agent",
+                description="AI assistant powered by Odin framework with weather, calendar, and data tools",
+                graph=graph,
             )
-            try:
-                result = await self.odin_app.execute_tool(tool_name, **kwargs)
-                logger.info("CopilotKit action completed", tool=tool_name)
-                return result
-            except Exception as e:
-                logger.error(
-                    "CopilotKit action failed",
-                    tool=tool_name,
-                    error=str(e),
-                )
-                raise
+            logger.info("AG-UI LangGraphAgent created", agent="odin_agent")
 
-        action = CopilotAction(
-            name=tool["name"],
-            description=tool.get("description", ""),
-            parameters=parameters,
-            handler=handler,
-        )
-
-        return action
-
-    def _map_type(self, odin_type: str) -> str:
-        """Map Odin type to CopilotKit type.
-
-        Args:
-            odin_type: Odin parameter type
-
-        Returns:
-            CopilotKit parameter type
-        """
-        type_mapping = {
-            "str": "string",
-            "string": "string",
-            "int": "number",
-            "integer": "number",
-            "float": "number",
-            "number": "number",
-            "bool": "boolean",
-            "boolean": "boolean",
-            "list": "array",
-            "array": "array",
-            "dict": "object",
-            "object": "object",
-        }
-        return type_mapping.get(odin_type.lower(), "string")
-
-    def get_actions(self) -> list:
-        """Get all Odin tools as CopilotKit actions.
-
-        Returns:
-            List of CopilotKit Action objects
-        """
-        actions = []
-        tools = self.odin_app.list_tools()
-
-        for tool in tools:
-            try:
-                action = self._convert_odin_tool_to_copilotkit_action(tool)
-                actions.append(action)
-                logger.info(
-                    "Converted tool to CopilotKit action",
-                    tool=tool["name"],
-                )
-            except Exception as e:
-                logger.error(
-                    "Failed to convert tool",
-                    tool=tool["name"],
-                    error=str(e),
-                )
-
-        return actions
-
-    def get_sdk(self):
-        """Get CopilotKit SDK instance with all Odin tools.
-
-        Returns:
-            CopilotKitSDK instance
-        """
-        try:
-            from copilotkit import CopilotKitSDK
-        except ImportError:
-            raise ImportError(
-                "copilotkit package is required. Install with: pip install copilotkit"
-            )
-
-        if self._sdk is None:
-            actions = self.get_actions()
-            self._sdk = CopilotKitSDK(actions=actions)
-            logger.info(
-                "CopilotKit SDK created",
-                action_count=len(actions),
-            )
-
-        return self._sdk
+        return self._agent
 
     def mount(self, app: FastAPI, path: str = "/copilotkit"):
-        """Mount CopilotKit endpoints on FastAPI app.
+        """Mount AG-UI endpoint on FastAPI app.
+
+        This uses the official ag_ui_langgraph package to create the endpoint,
+        which properly implements the AG-UI protocol for CopilotKit.
 
         Args:
             app: FastAPI application
             path: Endpoint path (default: "/copilotkit")
         """
         try:
-            from copilotkit.integrations.fastapi import add_fastapi_endpoint
+            from ag_ui_langgraph import add_langgraph_fastapi_endpoint
         except ImportError:
             raise ImportError(
-                "copilotkit package is required. Install with: pip install copilotkit"
+                "ag-ui-langgraph package is required. Install with: pip install ag-ui-langgraph"
             )
 
-        sdk = self.get_sdk()
-        add_fastapi_endpoint(app, sdk, path)
+        agent = self.get_agent()
+        add_langgraph_fastapi_endpoint(app, agent, path)
 
         logger.info(
-            "CopilotKit endpoint mounted",
+            "AG-UI endpoint mounted",
             path=path,
-            actions=len(self.get_actions()),
+            agent="odin_agent",
+            tools=len(self.odin_app.list_tools()),
         )
