@@ -14,7 +14,6 @@ We work around this by creating OdinLangGraphAgent that:
 - Also adds dict_repr() and get_state() methods for SDK compatibility
 """
 
-import os
 import uuid
 from typing import Any, Annotated, Optional, List
 
@@ -279,7 +278,6 @@ def create_odin_langgraph_agent(odin_app: Odin):
     Returns:
         Compiled LangGraph StateGraph
     """
-    from langchain_openai import ChatOpenAI
     from langchain_core.messages import SystemMessage, ToolMessage
     from langgraph.graph import StateGraph, START, END
     from langgraph.graph.message import add_messages
@@ -321,15 +319,10 @@ def create_odin_langgraph_agent(odin_app: Odin):
         )
         odin_tools.append(lc_tool)
 
-    # Get LLM configuration from environment
-    model = os.getenv("OPENAI_MODEL", "gpt-4o")
-    base_url = os.getenv("OPENAI_BASE_URL")
+    # Create LLM using factory (supports OpenAI, Anthropic, Azure)
+    from odin.core.llm_factory import create_llm
 
-    llm_kwargs = {"model": model}
-    if base_url:
-        llm_kwargs["base_url"] = base_url
-
-    llm = ChatOpenAI(**llm_kwargs)
+    llm = create_llm()
 
     # Bind tools to LLM
     if odin_tools:
@@ -399,7 +392,13 @@ Always be helpful and provide clear, concise responses.""")
     graph.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
     graph.add_edge("tools", "agent")
 
-    return graph.compile()
+    # Create checkpointer for conversation persistence
+    from odin.core.llm_factory import create_checkpointer
+
+    checkpointer = create_checkpointer()
+    logger.info("LangGraph agent compiled with checkpointer", checkpointer_type=type(checkpointer).__name__)
+
+    return graph.compile(checkpointer=checkpointer)
 
 
 class CopilotKitAdapter:

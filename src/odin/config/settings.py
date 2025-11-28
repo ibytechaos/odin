@@ -25,10 +25,26 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     # LLM Provider settings
+    llm_provider: Literal["openai", "anthropic", "azure"] = "openai"
     openai_api_key: str | None = Field(None, validation_alias="OPENAI_API_KEY")
     openai_model: str = "gpt-4o-mini"
+    openai_base_url: str | None = Field(None, validation_alias="OPENAI_BASE_URL")
     anthropic_api_key: str | None = Field(None, validation_alias="ANTHROPIC_API_KEY")
     anthropic_model: str = "claude-sonnet-4-5-20250929"
+    azure_openai_api_key: str | None = Field(None, validation_alias="AZURE_OPENAI_API_KEY")
+    azure_openai_endpoint: str | None = Field(None, validation_alias="AZURE_OPENAI_ENDPOINT")
+    azure_openai_deployment: str | None = Field(None, validation_alias="AZURE_OPENAI_DEPLOYMENT")
+    azure_openai_api_version: str = "2024-02-15-preview"
+
+    # Agent Backend settings
+    agent_backend: Literal["crewai", "langgraph", "custom"] = "crewai"
+    agent_name: str = "odin_agent"
+    agent_description: str = "AI assistant powered by Odin framework"
+    custom_agent_path: str | None = None  # Path to custom agent class (e.g., "my_agents.CustomAgent")
+
+    # Checkpointer settings
+    checkpointer_type: Literal["memory", "sqlite", "postgres", "redis"] = "memory"
+    checkpointer_uri: str | None = None  # Connection string for persistent checkpointers
 
     # Tracing settings
     otel_enabled: bool = True
@@ -90,11 +106,30 @@ class Settings(BaseSettings):
         return self.env == "development"
 
 
-@lru_cache
-def get_settings() -> Settings:
-    """Get cached settings instance.
+_settings_instance: Settings | None = None
+
+
+def get_settings(reload: bool = False) -> Settings:
+    """Get settings instance with optional hot reload.
+
+    Args:
+        reload: If True, reload settings from environment/file
 
     Returns:
-        Singleton Settings instance
+        Settings instance (singleton by default)
     """
-    return Settings()
+    global _settings_instance
+
+    if reload or _settings_instance is None:
+        _settings_instance = Settings()
+
+    return _settings_instance
+
+
+def reload_settings() -> Settings:
+    """Force reload settings from environment/file.
+
+    Returns:
+        Newly loaded Settings instance
+    """
+    return get_settings(reload=True)

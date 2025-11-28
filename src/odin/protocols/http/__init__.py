@@ -1,6 +1,6 @@
 """HTTP/REST API for Odin framework."""
 
-# Placeholder - will be implemented next
-def create_http_app(*args, **kwargs):
-    """Create HTTP/REST API app."""
-    raise NotImplementedError("HTTP API not yet implemented")
+from odin.protocols.http.adapter import HTTPAdapter
+from odin.protocols.http.server import HTTPServer
+
+__all__ = ["HTTPServer", "HTTPAdapter"]

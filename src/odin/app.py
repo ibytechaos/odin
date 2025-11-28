@@ -3,6 +3,11 @@
 This module provides a declarative way to define and run Odin agents
 using a YAML configuration file (app.yaml).
 
+The new architecture uses a unified IAgent interface that supports multiple
+agent backends (CrewAI, LangGraph, custom) and automatically routes requests
+through the ProtocolDispatcher to the appropriate protocol adapter
+(MCP, A2A, AG-UI, CopilotKit, HTTP).
+
 Example usage:
     ```bash
     # With app.yaml in current directory
@@ -44,6 +49,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from odin.config.app_config import AppConfig, ProtocolType, load_app_config
+from odin.core.agent_interface import IAgent
 from odin.core.odin import Odin
 from odin.logging import get_logger
 from odin.plugins import AgentPlugin
@@ -55,10 +61,10 @@ class OdinApp:
     """Configuration-driven Odin application.
 
     Loads configuration from app.yaml and automatically sets up:
-    - Odin core framework
+    - Odin core framework with unified agent interface
     - Plugins from configuration
-    - Protocol endpoints (AG-UI, A2A, MCP)
-    - Observability
+    - Protocol endpoints (AG-UI, A2A, MCP, HTTP) via protocol adapters
+    - Protocol-agnostic business logic
     """
 
     def __init__(self, config: AppConfig | str | Path | None = None):
@@ -76,6 +82,7 @@ class OdinApp:
             self.config = config
 
         self.odin: Odin | None = None
+        self.agent: IAgent | None = None
         self.fastapi: FastAPI | None = None
         self._adapters: dict[str, Any] = {}
 
@@ -94,10 +101,14 @@ class OdinApp:
         # Load plugins
         await self._load_plugins()
 
+        # Create unified agent
+        await self._create_agent()
+
         logger.info(
             "Application initialized",
             plugins=len(self.odin.list_plugins()),
             tools=len(self.odin.list_tools()),
+            agent=self.agent.name if self.agent else None,
         )
 
     async def _load_plugins(self) -> None:
@@ -146,6 +157,45 @@ class OdinApp:
                 )
                 raise
 
+    async def _create_agent(self) -> None:
+        """Create unified agent from configuration."""
+        try:
+            from odin.config import get_settings
+            from odin.core.agent_factory import AgentFactory
+
+            settings = get_settings()
+
+            # Create agent using factory
+            self.agent = AgentFactory.create_agent(settings=settings)
+
+            # Add tools from Odin
+            for tool_info in self.odin.list_tools():
+                try:
+                    # Get the actual tool object from Odin
+                    tool = self.odin._tools.get(tool_info["name"])
+                    if tool:
+                        self.agent.add_tool(tool)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to add tool to agent",
+                        tool=tool_info["name"],
+                        error=str(e),
+                    )
+
+            logger.info(
+                "Agent created",
+                name=self.agent.name,
+                backend=settings.agent_backend,
+            )
+
+        except ImportError as e:
+            logger.warning(
+                "Agent factory not available, using legacy mode",
+                error=str(e),
+            )
+            # Fallback: create a simple wrapper agent
+            self.agent = None
+
     def create_fastapi(self) -> FastAPI:
         """Create FastAPI application with configured protocols.
 
@@ -161,6 +211,8 @@ class OdinApp:
             yield
             if self.odin:
                 await self.odin.shutdown()
+            if self.agent:
+                await self.agent.shutdown()
 
         self.fastapi = FastAPI(
             title=self.config.name,
@@ -181,24 +233,33 @@ class OdinApp:
         # Health check
         @self.fastapi.get("/health")
         async def health():
+            agent_info = None
+            if self.agent:
+                agent_info = {
+                    "name": self.agent.name,
+                    "description": self.agent.description,
+                }
             return {
                 "status": "healthy",
                 "name": self.config.name,
                 "version": self.config.version,
+                "agent": agent_info,
             }
 
         return self.fastapi
 
     async def _setup_protocols(self, app: FastAPI) -> None:
-        """Setup protocol endpoints."""
+        """Setup protocol endpoints using new adapter architecture."""
         for protocol in self.config.get_enabled_protocols():
             try:
                 if protocol.type == ProtocolType.AGUI:
-                    await self._setup_agui(app, protocol)
+                    await self._setup_agui_v2(app, protocol)
                 elif protocol.type == ProtocolType.A2A:
-                    await self._setup_a2a(app, protocol)
+                    await self._setup_a2a_v2(app, protocol)
                 elif protocol.type == ProtocolType.HTTP:
-                    await self._setup_http(app, protocol)
+                    await self._setup_http_v2(app, protocol)
+                elif protocol.type == ProtocolType.COPILOTKIT:
+                    await self._setup_copilotkit_v2(app, protocol)
                 # MCP requires separate server (stdio)
 
                 logger.info(
@@ -213,10 +274,71 @@ class OdinApp:
                     type=protocol.type,
                     error=str(e),
                 )
-                raise
+                # Fallback to legacy setup
+                await self._setup_protocols_legacy(app, protocol)
 
-    async def _setup_agui(self, app: FastAPI, protocol) -> None:
-        """Setup AG-UI protocol endpoint."""
+    async def _setup_agui_v2(self, app: FastAPI, protocol) -> None:
+        """Setup AG-UI protocol using new adapter architecture."""
+        if self.agent:
+            from odin.protocols.agui.adapter import AGUIAdapter
+
+            adapter = AGUIAdapter(self.agent, path=protocol.path)
+            app.mount(protocol.path, adapter.get_app())
+            self._adapters["agui"] = adapter
+        else:
+            # Fallback to legacy
+            await self._setup_agui_legacy(app, protocol)
+
+    async def _setup_a2a_v2(self, app: FastAPI, protocol) -> None:
+        """Setup A2A protocol using new adapter architecture."""
+        if self.agent:
+            from odin.protocols.a2a.adapter import A2AAdapter
+
+            adapter = A2AAdapter(self.agent)
+            app.mount(protocol.path, adapter.get_app())
+            self._adapters["a2a"] = adapter
+        else:
+            # Fallback to legacy
+            await self._setup_a2a_legacy(app, protocol)
+
+    async def _setup_http_v2(self, app: FastAPI, protocol) -> None:
+        """Setup HTTP/REST protocol using new adapter architecture."""
+        if self.agent:
+            from odin.protocols.http.adapter import HTTPAdapter
+
+            adapter = HTTPAdapter(self.agent, name=self.config.name)
+            app.mount(protocol.path, adapter.get_app())
+            self._adapters["http"] = adapter
+        else:
+            # Fallback to legacy
+            await self._setup_http_legacy(app, protocol)
+
+    async def _setup_copilotkit_v2(self, app: FastAPI, protocol) -> None:
+        """Setup CopilotKit protocol using new adapter architecture."""
+        if self.agent:
+            from odin.protocols.copilotkit.adapter_v2 import CopilotKitAdapter
+
+            adapter = CopilotKitAdapter(self.agent)
+            adapter.mount(app, protocol.path)
+            self._adapters["copilotkit"] = adapter
+        else:
+            # Fallback to legacy
+            await self._setup_copilotkit_legacy(app, protocol)
+
+    # Legacy setup methods for backward compatibility
+    async def _setup_protocols_legacy(self, app: FastAPI, protocol) -> None:
+        """Setup protocols using legacy architecture."""
+        if protocol.type == ProtocolType.AGUI:
+            await self._setup_agui_legacy(app, protocol)
+        elif protocol.type == ProtocolType.A2A:
+            await self._setup_a2a_legacy(app, protocol)
+        elif protocol.type == ProtocolType.HTTP:
+            await self._setup_http_legacy(app, protocol)
+        elif protocol.type == ProtocolType.COPILOTKIT:
+            await self._setup_copilotkit_legacy(app, protocol)
+
+    async def _setup_agui_legacy(self, app: FastAPI, protocol) -> None:
+        """Setup AG-UI protocol endpoint (legacy)."""
         try:
             from odin.protocols.copilotkit import CopilotKitAdapter
 
@@ -225,15 +347,14 @@ class OdinApp:
             self._adapters["agui"] = adapter
 
         except ImportError:
-            # Fall back to basic AG-UI
             from odin.protocols.agui import AGUIServer
 
             agui = AGUIServer(self.odin, path=protocol.path)
             app.mount(protocol.path, agui.app)
             self._adapters["agui"] = agui
 
-    async def _setup_a2a(self, app: FastAPI, protocol) -> None:
-        """Setup A2A protocol endpoint."""
+    async def _setup_a2a_legacy(self, app: FastAPI, protocol) -> None:
+        """Setup A2A protocol endpoint (legacy)."""
         from odin.protocols.a2a import A2AServer
 
         a2a = A2AServer(
@@ -241,14 +362,24 @@ class OdinApp:
             name=self.config.name,
             description=self.config.description,
         )
-        # Mount A2A routes under the specified path
         app.mount(protocol.path, a2a.app)
         self._adapters["a2a"] = a2a
 
-    async def _setup_http(self, app: FastAPI, protocol) -> None:
-        """Setup HTTP/REST endpoint."""
-        # TODO: Implement HTTP/REST adapter
-        logger.warning("HTTP protocol not yet implemented")
+    async def _setup_http_legacy(self, app: FastAPI, protocol) -> None:
+        """Setup HTTP/REST endpoint (legacy)."""
+        from odin.protocols.http import HTTPServer
+
+        http = HTTPServer(self.odin, name=self.config.name)
+        app.mount(protocol.path, http.app)
+        self._adapters["http"] = http
+
+    async def _setup_copilotkit_legacy(self, app: FastAPI, protocol) -> None:
+        """Setup CopilotKit endpoint (legacy)."""
+        from odin.protocols.copilotkit import CopilotKitAdapter
+
+        adapter = CopilotKitAdapter(self.odin)
+        adapter.mount(app, protocol.path)
+        self._adapters["copilotkit"] = adapter
 
     async def run(self) -> None:
         """Run the application server."""
