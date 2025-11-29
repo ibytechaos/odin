@@ -10,17 +10,26 @@ It simply calls tools, and tools return UI-friendly data structures.
 The CopilotKit SDK handles the rest.
 """
 
-from odin.plugins import AgentPlugin
+from odin.plugins import DecoratorPlugin
 from odin.decorators import tool
 
 
-class UIToolsPlugin(AgentPlugin):
+class UIToolsPlugin(DecoratorPlugin):
     """Plugin providing UI-generating tools."""
 
-    name = "ui_tools"
-    description = "Tools that generate interactive UI components"
+    @property
+    def name(self) -> str:
+        return "ui_tools"
 
-    @tool
+    @property
+    def version(self) -> str:
+        return "1.0.0"
+
+    @property
+    def description(self) -> str:
+        return "Tools that generate interactive UI components"
+
+    @tool()
     def create_chart(
         self,
         data: list[dict],
@@ -58,7 +67,7 @@ class UIToolsPlugin(AgentPlugin):
             "yAxis": y_axis,
         }
 
-    @tool
+    @tool()
     def create_table(
         self,
         rows: list[dict],
@@ -88,7 +97,7 @@ class UIToolsPlugin(AgentPlugin):
             "rows": rows,
         }
 
-    @tool
+    @tool()
     def create_card(
         self,
         title: str,
@@ -117,7 +126,7 @@ class UIToolsPlugin(AgentPlugin):
             "actions": actions or [],
         }
 
-    @tool
+    @tool()
     def create_progress(
         self,
         current: int,
@@ -149,7 +158,7 @@ class UIToolsPlugin(AgentPlugin):
             "status": status,
         }
 
-    @tool
+    @tool()
     def create_form(
         self,
         title: str,
@@ -178,7 +187,7 @@ class UIToolsPlugin(AgentPlugin):
             "submitLabel": submit_label,
         }
 
-    @tool
+    @tool()
     def create_alert(
         self,
         message: str,

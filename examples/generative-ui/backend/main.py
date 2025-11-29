@@ -82,16 +82,10 @@ async def create_app(odin_app: Odin) -> FastAPI:
 
 
 async def main():
-    # Initialize Odin with auto-discovery of plugins
+    # Initialize Odin with auto-discovery of plugins from ./plugins directory
+    # Plugins are automatically discovered and registered
     odin_app = Odin()
     await odin_app.initialize()
-
-    # Manually import and register plugins from ./plugins directory
-    from plugins.ui_tools import UIToolsPlugin
-    from plugins.data_tools import DataToolsPlugin
-
-    await odin_app.register_plugin(UIToolsPlugin())
-    await odin_app.register_plugin(DataToolsPlugin())
 
     logger.info(
         "Odin initialized with generative UI tools",

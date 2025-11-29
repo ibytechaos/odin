@@ -12,17 +12,26 @@ data that the frontend knows how to render beautifully.
 import random
 from datetime import datetime, timedelta
 
-from odin.plugins import AgentPlugin
+from odin.plugins import DecoratorPlugin
 from odin.decorators import tool
 
 
-class DataToolsPlugin(AgentPlugin):
+class DataToolsPlugin(DecoratorPlugin):
     """Plugin providing data analysis tools with UI output."""
 
-    name = "data_tools"
-    description = "Data analysis tools that generate visualizations"
+    @property
+    def name(self) -> str:
+        return "data_tools"
 
-    @tool
+    @property
+    def version(self) -> str:
+        return "1.0.0"
+
+    @property
+    def description(self) -> str:
+        return "Data analysis tools that generate visualizations"
+
+    @tool()
     def get_sales_data(
         self,
         period: str = "week",
@@ -72,7 +81,7 @@ class DataToolsPlugin(AgentPlugin):
             }
         }
 
-    @tool
+    @tool()
     def get_customer_list(
         self,
         status: str | None = None,
@@ -114,7 +123,7 @@ class DataToolsPlugin(AgentPlugin):
             "rows": customers,
         }
 
-    @tool
+    @tool()
     def get_product_details(
         self,
         product_id: int | None = None,
@@ -181,7 +190,7 @@ class DataToolsPlugin(AgentPlugin):
             ],
         }
 
-    @tool
+    @tool()
     def analyze_metrics(
         self,
         metric_type: str = "revenue",
@@ -244,7 +253,7 @@ class DataToolsPlugin(AgentPlugin):
             ],
         }
 
-    @tool
+    @tool()
     def search_products(
         self,
         query: str,
