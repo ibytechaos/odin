@@ -19,7 +19,6 @@
  * Tools naturally return structured data, and the SDK handles rendering.
  */
 
-import { useState } from "react";
 import { CopilotKit } from "@copilotkit/react-core";
 import { CopilotChat } from "@copilotkit/react-ui";
 import { useCopilotAction } from "@copilotkit/react-core";
@@ -36,163 +35,101 @@ import { DashboardRenderer } from "../components/DashboardRenderer";
 import { SearchResultsRenderer } from "../components/SearchResultsRenderer";
 
 /**
- * Chat interface with registered UI renderers
+ * Map component type to renderer.
+ * Tools return { component: "chart" | "table" | "card" | ... }
+ * and we render the appropriate UI component.
+ */
+const componentRenderers: Record<string, React.ComponentType<any>> = {
+  chart: ChartRenderer,
+  table: TableRenderer,
+  card: CardRenderer,
+  progress: ProgressRenderer,
+  alert: AlertRenderer,
+  form: FormRenderer,
+  dashboard: DashboardRenderer,
+  search_results: SearchResultsRenderer,
+};
+
+/**
+ * Universal renderer for all tool results.
+ * Handles the CopilotKit action render props format:
+ * { status, args, result, name }
+ */
+function UniversalRenderer({
+  name,
+  status,
+  args,
+  result,
+}: {
+  name: string;
+  status: string;
+  args: Record<string, unknown>;
+  result: unknown;
+}): React.ReactElement {
+  // Show loading state while executing
+  if (status === "inProgress" || status === "executing") {
+    return (
+      <div className="p-4 bg-gray-100 rounded-lg animate-pulse">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-sm text-gray-600">Running {name}...</span>
+        </div>
+        <div className="h-32 bg-gray-200 rounded"></div>
+      </div>
+    );
+  }
+
+  // Parse result
+  let data: Record<string, unknown> = {};
+  if (result) {
+    if (typeof result === "string") {
+      try {
+        data = JSON.parse(result);
+      } catch {
+        // If result is not JSON, show as text
+        return (
+          <div className="p-4 bg-white rounded-lg shadow border">
+            <pre className="text-sm text-gray-800 whitespace-pre-wrap">
+              {result}
+            </pre>
+          </div>
+        );
+      }
+    } else if (typeof result === "object") {
+      data = result as Record<string, unknown>;
+    }
+  }
+
+  // Determine which renderer to use based on component type
+  const componentType = data.component as string;
+  const Renderer = componentRenderers[componentType];
+
+  if (Renderer) {
+    return <Renderer {...data} />;
+  }
+
+  // Fallback: render as JSON
+  return (
+    <div className="p-4 bg-white rounded-lg shadow border">
+      <div className="text-sm font-semibold text-gray-600 mb-2">
+        {name} result:
+      </div>
+      <pre className="text-xs text-gray-800 bg-gray-50 p-2 rounded overflow-auto max-h-64">
+        {JSON.stringify(data, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
+/**
+ * Chat interface with catch-all action renderer
  */
 function ChatWithGenerativeUI() {
-  // Register chart renderer
+  // Use catch-all action to render all remote tool results
+  // This captures actions from the backend (remoteEndpoints)
   useCopilotAction({
-    name: "create_chart",
-    description: "Render an interactive chart",
-    parameters: [
-      { name: "component", type: "string" },
-      { name: "chartType", type: "string" },
-      { name: "title", type: "string" },
-      { name: "data", type: "object[]" },
-      { name: "xAxis", type: "string" },
-      { name: "yAxis", type: "string" },
-      { name: "summary", type: "object" },
-    ],
-    render: (props) => <ChartRenderer {...props} />,
-  });
-
-  // Register table renderer
-  useCopilotAction({
-    name: "create_table",
-    description: "Render a data table",
-    parameters: [
-      { name: "component", type: "string" },
-      { name: "title", type: "string" },
-      { name: "columns", type: "string[]" },
-      { name: "rows", type: "object[]" },
-    ],
-    render: (props) => <TableRenderer {...props} />,
-  });
-
-  // Register card renderer
-  useCopilotAction({
-    name: "create_card",
-    description: "Render a card component",
-    parameters: [
-      { name: "component", type: "string" },
-      { name: "title", type: "string" },
-      { name: "content", type: "string" },
-      { name: "imageUrl", type: "string" },
-      { name: "actions", type: "object[]" },
-    ],
-    render: (props) => <CardRenderer {...props} />,
-  });
-
-  // Register progress renderer
-  useCopilotAction({
-    name: "create_progress",
-    description: "Render a progress indicator",
-    parameters: [
-      { name: "component", type: "string" },
-      { name: "label", type: "string" },
-      { name: "current", type: "number" },
-      { name: "total", type: "number" },
-      { name: "percentage", type: "number" },
-      { name: "status", type: "string" },
-    ],
-    render: (props) => <ProgressRenderer {...props} />,
-  });
-
-  // Register alert renderer
-  useCopilotAction({
-    name: "create_alert",
-    description: "Render an alert notification",
-    parameters: [
-      { name: "component", type: "string" },
-      { name: "type", type: "string" },
-      { name: "title", type: "string" },
-      { name: "message", type: "string" },
-      { name: "dismissable", type: "boolean" },
-    ],
-    render: (props) => <AlertRenderer {...props} />,
-  });
-
-  // Register form renderer
-  useCopilotAction({
-    name: "create_form",
-    description: "Render an interactive form",
-    parameters: [
-      { name: "component", type: "string" },
-      { name: "title", type: "string" },
-      { name: "fields", type: "object[]" },
-      { name: "submitLabel", type: "string" },
-    ],
-    render: (props) => <FormRenderer {...props} />,
-  });
-
-  // Data tools renderers
-  useCopilotAction({
-    name: "get_sales_data",
-    description: "Display sales data chart",
-    parameters: [
-      { name: "component", type: "string" },
-      { name: "chartType", type: "string" },
-      { name: "title", type: "string" },
-      { name: "data", type: "object[]" },
-      { name: "xAxis", type: "string" },
-      { name: "yAxis", type: "string" },
-      { name: "summary", type: "object" },
-    ],
-    render: (props) => <ChartRenderer {...props} />,
-  });
-
-  useCopilotAction({
-    name: "get_customer_list",
-    description: "Display customer table",
-    parameters: [
-      { name: "component", type: "string" },
-      { name: "title", type: "string" },
-      { name: "columns", type: "string[]" },
-      { name: "rows", type: "object[]" },
-    ],
-    render: (props) => <TableRenderer {...props} />,
-  });
-
-  useCopilotAction({
-    name: "get_product_details",
-    description: "Display product card",
-    parameters: [
-      { name: "component", type: "string" },
-      { name: "title", type: "string" },
-      { name: "content", type: "string" },
-      { name: "imageUrl", type: "string" },
-      { name: "price", type: "string" },
-      { name: "inStock", type: "boolean" },
-      { name: "actions", type: "object[]" },
-    ],
-    render: (props) => <CardRenderer {...props} />,
-  });
-
-  useCopilotAction({
-    name: "analyze_metrics",
-    description: "Display metrics dashboard",
-    parameters: [
-      { name: "component", type: "string" },
-      { name: "metric", type: "string" },
-      { name: "current", type: "number" },
-      { name: "previous", type: "number" },
-      { name: "change", type: "number" },
-      { name: "trend", type: "string" },
-      { name: "chart", type: "object" },
-      { name: "insights", type: "string[]" },
-    ],
-    render: (props) => <DashboardRenderer {...props} />,
-  });
-
-  useCopilotAction({
-    name: "search_products",
-    description: "Display search results",
-    parameters: [
-      { name: "component", type: "string" },
-      { name: "query", type: "string" },
-      { name: "total", type: "number" },
-      { name: "results", type: "object[]" },
-    ],
-    render: (props) => <SearchResultsRenderer {...props} />,
+    name: "*",
+    render: (props: any) => <UniversalRenderer {...props} />,
   });
 
   return (
