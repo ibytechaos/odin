@@ -1,18 +1,34 @@
 """Configuration settings using Pydantic."""
 
-from functools import lru_cache
+import os
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from dotenv import load_dotenv
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _find_and_load_env_file() -> str | None:
+    """Find .env file and load it, prioritizing current directory."""
+    cwd = Path.cwd()
+    env_path = cwd / ".env"
+    if env_path.exists():
+        # Load .env with override=True to override existing env vars
+        load_dotenv(env_path, override=True)
+        return str(env_path)
+    return ".env"
+
+
+# Load .env file immediately on module import
+_env_file_path = _find_and_load_env_file()
 
 
 class Settings(BaseSettings):
     """Main configuration for Odin framework."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=None,  # We already loaded via dotenv with override
         env_file_encoding="utf-8",
         env_prefix="ODIN_",
         case_sensitive=False,
@@ -27,10 +43,10 @@ class Settings(BaseSettings):
     # LLM Provider settings
     llm_provider: Literal["openai", "anthropic", "azure"] = "openai"
     openai_api_key: str | None = Field(None, validation_alias="OPENAI_API_KEY")
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = Field("gpt-4o-mini", validation_alias="OPENAI_MODEL")
     openai_base_url: str | None = Field(None, validation_alias="OPENAI_BASE_URL")
     anthropic_api_key: str | None = Field(None, validation_alias="ANTHROPIC_API_KEY")
-    anthropic_model: str = "claude-sonnet-4-5-20250929"
+    anthropic_model: str = Field("claude-sonnet-4-5-20250929", validation_alias="ANTHROPIC_MODEL")
     azure_openai_api_key: str | None = Field(None, validation_alias="AZURE_OPENAI_API_KEY")
     azure_openai_endpoint: str | None = Field(None, validation_alias="AZURE_OPENAI_ENDPOINT")
     azure_openai_deployment: str | None = Field(None, validation_alias="AZURE_OPENAI_DEPLOYMENT")
@@ -107,6 +123,31 @@ class Settings(BaseSettings):
 
 
 _settings_instance: Settings | None = None
+_settings_logged: bool = False
+
+
+def _log_settings(settings: Settings) -> None:
+    """Log key configuration settings on first load."""
+    global _settings_logged
+    if _settings_logged:
+        return
+    _settings_logged = True
+
+    # Use print for immediate visibility during startup
+    print("\n" + "=" * 60)
+    print("  Odin Configuration")
+    print("=" * 60)
+    print(f"  ENV_FILE: {_env_file_path}")
+    print(f"  CWD: {Path.cwd()}")
+    print("-" * 60)
+    print(f"  LLM_PROVIDER: {settings.llm_provider}")
+    print(f"  OPENAI_MODEL: {settings.openai_model}")
+    print(f"  OPENAI_BASE_URL: {settings.openai_base_url or '(default)'}")
+    print(f"  OPENAI_API_KEY: {'***' + settings.openai_api_key[-4:] if settings.openai_api_key else '(not set)'}")
+    print("-" * 60)
+    print(f"  AGENT_BACKEND: {settings.agent_backend}")
+    print(f"  CHECKPOINTER: {settings.checkpointer_type}")
+    print("=" * 60 + "\n")
 
 
 def get_settings(reload: bool = False) -> Settings:
@@ -118,10 +159,13 @@ def get_settings(reload: bool = False) -> Settings:
     Returns:
         Settings instance (singleton by default)
     """
-    global _settings_instance
+    global _settings_instance, _settings_logged
 
     if reload or _settings_instance is None:
+        if reload:
+            _settings_logged = False  # Re-log on reload
         _settings_instance = Settings()
+        _log_settings(_settings_instance)
 
     return _settings_instance
 
@@ -133,3 +177,7 @@ def reload_settings() -> Settings:
         Newly loaded Settings instance
     """
     return get_settings(reload=True)
+
+
+# Auto-initialize settings on module import
+settings = get_settings()

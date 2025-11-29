@@ -61,6 +61,11 @@ def _create_openai_llm(settings: Settings) -> Any:
     if settings.openai_base_url:
         llm_kwargs["base_url"] = settings.openai_base_url
 
+    # Print configuration for debugging
+    print(f"[LLM Factory] Creating OpenAI LLM:")
+    print(f"  Model: {settings.openai_model}")
+    print(f"  Base URL: {settings.openai_base_url or '(default: api.openai.com)'}")
+
     logger.info(
         "Creating OpenAI LLM",
         model=settings.openai_model,

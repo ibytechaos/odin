@@ -83,3 +83,4 @@ site/
 tmp/
 temp/
 .next
+node_modules

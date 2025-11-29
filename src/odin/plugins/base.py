@@ -254,6 +254,7 @@ class DecoratorPlugin(AgentPlugin):
 
     async def execute_tool(self, tool_name: str, **kwargs: Any) -> dict[str, Any]:
         """Execute a @tool decorated method by name."""
+        import asyncio
         from odin.decorators.tool import get_tool_from_function, is_tool
 
         for attr_name in dir(self):
@@ -263,6 +264,10 @@ class DecoratorPlugin(AgentPlugin):
             if callable(attr) and is_tool(attr):
                 tool_def = get_tool_from_function(attr)
                 if tool_def and tool_def.name == tool_name:
-                    return await attr(**kwargs)
+                    # Handle both sync and async methods
+                    result = attr(**kwargs)
+                    if asyncio.iscoroutine(result):
+                        return await result
+                    return result
 
         raise ValueError(f"Tool '{tool_name}' not found in plugin '{self.name}'")
