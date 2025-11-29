@@ -1,11 +1,11 @@
-"""Example plugin - customize this for your agent."""
+"""Example tools - customize this for your agent."""
 
 from odin.plugins import DecoratorPlugin
 from odin.decorators import tool
 
 
-class ExamplePlugin(DecoratorPlugin):
-    """Example plugin demonstrating Odin's @tool decorator.
+class ExampleTools(DecoratorPlugin):
+    """Example tools demonstrating Odin's @tool decorator.
 
     This plugin is automatically discovered and loaded by Odin.
     Add your own tools by creating methods with the @tool() decorator.

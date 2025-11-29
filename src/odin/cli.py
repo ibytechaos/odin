@@ -3,8 +3,8 @@
 
 Commands:
     odin create <project-name>  Create a new Odin project
-    odin create --frontend      Create frontend only
-    odin create --backend       Create backend only
+    odin create --ui-only       Create UI only
+    odin create --agent-only    Create agent only
 """
 
 import shutil
@@ -44,6 +44,27 @@ def copy_template(
                 shutil.copy2(src_file, dest_file)
 
 
+def copy_root_files(template_dir: Path, project_dir: Path, replacements: dict[str, str]) -> None:
+    """Copy root-level template files (Makefile, docker-compose, etc)."""
+    root_files = [
+        "Makefile",
+        "docker-compose.yml",
+        ".env.example",
+        "README.md",
+        ".gitignore",
+    ]
+    for filename in root_files:
+        src_file = template_dir / filename
+        if src_file.exists():
+            try:
+                content = src_file.read_text()
+                for key, value in replacements.items():
+                    content = content.replace(f"{{{{{key}}}}}", value)
+                (project_dir / filename).write_text(content)
+            except UnicodeDecodeError:
+                shutil.copy2(src_file, project_dir / filename)
+
+
 @click.group()
 @click.version_option(version="0.1.0", prog_name="odin")
 def cli() -> None:
@@ -53,10 +74,10 @@ def cli() -> None:
 
 @cli.command()
 @click.argument("name")
-@click.option("--frontend", is_flag=True, help="Create frontend only")
-@click.option("--backend", is_flag=True, help="Create backend only")
+@click.option("--ui-only", is_flag=True, help="Create UI only")
+@click.option("--agent-only", is_flag=True, help="Create agent only")
 @click.option("--title", default=None, help="Project title (default: project name)")
-def create(name: str, frontend: bool, backend: bool, title: str | None) -> None:
+def create(name: str, ui_only: bool, agent_only: bool, title: str | None) -> None:
     """Create a new Odin project.
 
     NAME is the project directory name.
@@ -65,17 +86,17 @@ def create(name: str, frontend: bool, backend: bool, title: str | None) -> None:
 
         odin create my-agent          # Full stack project
 
-        odin create my-agent --backend   # Backend only
+        odin create my-agent --agent-only   # Agent only
 
-        odin create my-agent --frontend  # Frontend only
+        odin create my-agent --ui-only      # UI only
     """
     project_dir = Path.cwd() / name
     template_dir = get_template_dir()
     project_title = title or name.replace("-", " ").replace("_", " ").title()
 
     # Determine what to create
-    create_frontend = frontend or (not frontend and not backend)
-    create_backend = backend or (not frontend and not backend)
+    create_ui = ui_only or (not ui_only and not agent_only)
+    create_agent = agent_only or (not ui_only and not agent_only)
 
     replacements = {
         "PROJECT_NAME": name,
@@ -93,81 +114,27 @@ def create(name: str, frontend: bool, backend: bool, title: str | None) -> None:
 
     project_dir.mkdir(parents=True)
 
-    # Create backend
-    if create_backend:
-        click.echo("Creating backend...")
-        backend_src = template_dir / "backend"
-        backend_dest = project_dir if not create_frontend else project_dir
-        copy_template(backend_src, backend_dest, replacements)
-        click.echo(click.style("  ✓ Backend created", fg="green"))
+    # Create agent
+    if create_agent:
+        click.echo("Creating agent...")
+        agent_src = template_dir / "agent"
+        agent_dest = project_dir / "agent"
+        copy_template(agent_src, agent_dest, replacements)
+        click.echo(click.style("  ✓ Agent created", fg="green"))
 
-    # Create frontend
-    if create_frontend:
-        click.echo("Creating frontend...")
-        frontend_src = template_dir / "frontend"
-        frontend_dest = project_dir / "frontend" if create_backend else project_dir
-        copy_template(frontend_src, frontend_dest, replacements)
-        click.echo(click.style("  ✓ Frontend created", fg="green"))
+    # Create UI
+    if create_ui:
+        click.echo("Creating UI...")
+        ui_src = template_dir / "ui"
+        ui_dest = project_dir / "ui"
+        copy_template(ui_src, ui_dest, replacements)
+        click.echo(click.style("  ✓ UI created", fg="green"))
 
-    # Create start script and env file for full stack
-    if create_frontend and create_backend:
-        # Create .env.example
-        env_content = f"""# {project_title} Configuration
-
-# Server
-HOST=0.0.0.0
-BACKEND_PORT=8000
-FRONTEND_PORT=3000
-PROTOCOL=copilotkit
-
-# OpenAI (if using LLM features)
-OPENAI_API_KEY=your-api-key-here
-OPENAI_MODEL=gpt-4o
-
-# Observability
-OTEL_ENABLED=false
-LOG_LEVEL=INFO
-
-# Frontend
-NEXT_PUBLIC_BACKEND_URL=http://localhost:8000/copilotkit
-"""
-        (project_dir / ".env.example").write_text(env_content)
-
-        # Create start.sh
-        start_script = '''#!/bin/bash
-# Start script for {title}
-
-set -e
-cd "$(dirname "$0")"
-
-# Load env
-[ -f .env ] && export $(grep -v '^#' .env | xargs)
-
-HOST=${{HOST:-0.0.0.0}}
-BACKEND_PORT=${{BACKEND_PORT:-8000}}
-FRONTEND_PORT=${{FRONTEND_PORT:-3000}}
-PROTOCOL=${{PROTOCOL:-copilotkit}}
-
-case "${{1:-all}}" in
-    backend)
-        python main.py --protocol "$PROTOCOL" --host "$HOST" --port "$BACKEND_PORT"
-        ;;
-    frontend)
-        cd frontend && npm run dev
-        ;;
-    all)
-        python main.py --protocol "$PROTOCOL" --host "$HOST" --port "$BACKEND_PORT" &
-        sleep 2
-        cd frontend && PORT=$FRONTEND_PORT npm run dev
-        ;;
-    *)
-        echo "Usage: $0 [backend|frontend|all]"
-        ;;
-esac
-'''.format(title=project_title)
-        start_path = project_dir / "start.sh"
-        start_path.write_text(start_script)
-        start_path.chmod(0o755)
+    # Copy root files for full stack
+    if create_ui and create_agent:
+        click.echo("Creating project files...")
+        copy_root_files(template_dir, project_dir, replacements)
+        click.echo(click.style("  ✓ Project files created", fg="green"))
 
     click.echo()
     click.echo(click.style("Project created successfully!", fg="green"))
@@ -175,25 +142,21 @@ esac
     click.echo("Next steps:")
     click.echo(f"  cd {name}")
 
-    if create_backend:
-        click.echo("  pip install odin-agent  # or: uv add odin-agent")
-
-    if create_frontend:
-        frontend_path = "frontend" if create_backend else "."
-        click.echo(f"  cd {frontend_path} && npm install")
-
-    click.echo()
-
-    if create_frontend and create_backend:
-        click.echo("To start the application:")
-        click.echo("  ./start.sh              # Start both backend and frontend")
-        click.echo("  ./start.sh backend      # Start backend only")
-        click.echo("  ./start.sh frontend     # Start frontend only")
-    elif create_backend:
-        click.echo("To start the backend:")
+    if create_ui and create_agent:
+        click.echo("  cp .env.example .env      # Configure your API keys")
+        click.echo("  make install              # Install dependencies")
+        click.echo("  make dev                  # Start development servers")
+        click.echo()
+        click.echo("Or with Docker:")
+        click.echo("  make docker-build         # Build containers")
+        click.echo("  make docker-up            # Start services")
+    elif create_agent:
+        click.echo("  cd agent")
+        click.echo("  pip install -e .")
         click.echo("  python main.py")
-    elif create_frontend:
-        click.echo("To start the frontend:")
+    elif create_ui:
+        click.echo("  cd ui")
+        click.echo("  npm install")
         click.echo("  npm run dev")
 
 

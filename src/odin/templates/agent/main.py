@@ -55,7 +55,12 @@ async def create_app(odin_app: Odin) -> FastAPI:
     # Health check
     @app.get("/health")
     async def health():
-        return {"status": "healthy", "tools": len(odin_app.list_tools())}
+        tools = odin_app.list_tools()
+        return {
+            "status": "healthy",
+            "tools": len(tools),
+            "tool_names": [t["name"] for t in tools],
+        }
 
     return app
 
@@ -73,8 +78,8 @@ async def main():
 
     args = parser.parse_args()
 
-    # Initialize Odin (plugins are auto-discovered from ./plugins directory)
-    odin_app = Odin()
+    # Initialize Odin (tools are auto-discovered from ./tools directory)
+    odin_app = Odin(plugin_dirs=["tools"])
     await odin_app.initialize()
 
     logger.info(
