@@ -82,3 +82,4 @@ site/
 # Temporary files
 tmp/
 temp/
+.next
