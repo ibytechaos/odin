@@ -6,14 +6,14 @@ authors = [
     {name = "Wu Zhipeng", email = "your.email@example.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 license = {text = "MIT"}
 keywords = ["agent", "ai", "mcp", "a2a", "ag-ui", "llm", "framework"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 
@@ -66,7 +66,7 @@ dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
-    "pytest-mock>=3.14.0",
+    "pytest-mock>=3.13.0",
     "mypy>=1.13.0",
     "ruff>=0.8.0",
     "pre-commit>=4.0.0",
@@ -97,9 +97,21 @@ notebookllm = [
     "pdf2image>=1.17.0",
 ]
 
+# PPT conversion tools (OCR + image processing)
+pptx-converter = [
+    "paddlepaddle>=3.0.0",
+    "paddleocr>=3.0.0",  # Use latest; odin.compat patches langchain compatibility
+    "python-pptx>=1.0.0",
+    "opencv-python>=4.10.0",
+    "langchain-core>=0.2.0",  # Required for paddleocr 3.x compatibility shim
+    "langchain-text-splitters>=0.2.0",  # Required for paddleocr 3.x compatibility shim
+    # Optional: better inpainting with LaMa
+    # "lama-cleaner>=1.2.0",
+]
+
 # All optional dependencies
 all = [
-    "odin[dev,profiling,protocols,postgres,notebookllm]",
+    "odin[dev,profiling,protocols,postgres,notebookllm,pptx-converter]",
 ]
 
 [project.urls]
@@ -166,7 +178,7 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

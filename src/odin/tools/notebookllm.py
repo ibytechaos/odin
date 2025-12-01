@@ -1080,6 +1080,403 @@ class NotebookLLMTools(DecoratorPlugin):
                 "error": f"PDF conversion failed: {str(e)}",
             }
 
+    def _detect_text_regions(
+        self,
+        image_path: str,
+        lang: str = "ch",
+    ) -> list[dict[str, Any]]:
+        """Detect text regions in an image using PaddleOCR.
+
+        Args:
+            image_path: Path to the image file
+            lang: Language code ('ch' for Chinese+English, 'en' for English only)
+
+        Returns:
+            List of detected text regions with coordinates, text, and confidence
+        """
+        try:
+            # Apply compatibility patches for paddleocr 3.x (requires langchain shim)
+            from odin.compat import patch_langchain_for_paddlex
+            patch_langchain_for_paddlex()
+            from paddleocr import PaddleOCR
+        except ImportError:
+            raise ImportError(
+                "PaddleOCR not installed. Install with: pip install paddlepaddle paddleocr"
+            ) from None
+
+        # Initialize PaddleOCR
+        # Note: PaddleOCR 3.x API changed - uses different params than 2.x
+        ocr = PaddleOCR(lang=lang)
+
+        # Run OCR - PaddleOCR 3.x returns results directly
+        result = ocr.ocr(image_path)
+
+        text_regions = []
+        if result and result[0]:
+            for line in result[0]:
+                # line format: [box_coordinates, (text, confidence)]
+                box = line[0]  # [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+                text, confidence = line[1]
+
+                # Calculate bounding box (min/max of polygon points)
+                x_coords = [p[0] for p in box]
+                y_coords = [p[1] for p in box]
+                x_min, x_max = min(x_coords), max(x_coords)
+                y_min, y_max = min(y_coords), max(y_coords)
+
+                # Estimate font size based on box height
+                box_height = y_max - y_min
+                # Rough estimation: font size ≈ box height * 0.75
+                estimated_font_size = int(box_height * 0.75)
+
+                text_regions.append({
+                    "text": text,
+                    "confidence": confidence,
+                    "box": {
+                        "x": int(x_min),
+                        "y": int(y_min),
+                        "width": int(x_max - x_min),
+                        "height": int(y_max - y_min),
+                    },
+                    "polygon": [[int(p[0]), int(p[1])] for p in box],
+                    "estimated_font_size": estimated_font_size,
+                })
+
+        return text_regions
+
+    def _create_text_mask(
+        self,
+        image_size: tuple[int, int],
+        text_regions: list[dict[str, Any]],
+        dilate_pixels: int = 5,
+    ):
+        """Create a binary mask for text regions.
+
+        Args:
+            image_size: (width, height) of the image
+            text_regions: List of text regions from OCR
+            dilate_pixels: Pixels to dilate the mask (helps with inpainting)
+
+        Returns:
+            numpy array mask (255 for text areas, 0 for background)
+        """
+        import cv2
+        import numpy as np
+
+        width, height = image_size
+        mask = np.zeros((height, width), dtype=np.uint8)
+
+        for region in text_regions:
+            # Use polygon for more accurate masking
+            polygon = np.array(region["polygon"], dtype=np.int32)
+            cv2.fillPoly(mask, [polygon], 255)
+
+        # Dilate mask to ensure complete text coverage
+        if dilate_pixels > 0:
+            kernel = np.ones((dilate_pixels, dilate_pixels), np.uint8)
+            mask = cv2.dilate(mask, kernel, iterations=1)
+
+        return mask
+
+    def _inpaint_background(
+        self,
+        image_path: str,
+        mask,
+        method: str = "telea",
+        inpaint_radius: int = 5,
+    ):
+        """Remove text from image using inpainting to reconstruct background.
+
+        Args:
+            image_path: Path to the original image
+            mask: Binary mask (255 for areas to inpaint)
+            method: Inpainting method ('telea', 'ns', or 'lama')
+            inpaint_radius: Radius for OpenCV inpainting methods
+
+        Returns:
+            Inpainted image (numpy array in BGR format)
+        """
+        import cv2
+
+        image = cv2.imread(image_path)
+
+        if method == "lama":
+            # Try to use LaMa for better quality (requires lama-cleaner)
+            try:
+                from lama_cleaner.model_manager import ModelManager
+                from lama_cleaner.schema import Config
+
+                model = ModelManager(name="lama", device="cpu")
+                config = Config(
+                    ldm_steps=25,
+                    hd_strategy="Original",
+                    hd_strategy_crop_margin=128,
+                    hd_strategy_crop_trigger_size=800,
+                    hd_strategy_resize_limit=800,
+                )
+                # Convert BGR to RGB for lama
+                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                result = model(image_rgb, mask, config)
+                return cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
+            except ImportError:
+                # Fall back to OpenCV method
+                method = "telea"
+
+        if method == "telea":
+            return cv2.inpaint(image, mask, inpaint_radius, cv2.INPAINT_TELEA)
+        else:  # ns (Navier-Stokes)
+            return cv2.inpaint(image, mask, inpaint_radius, cv2.INPAINT_NS)
+
+    def _estimate_font_color(
+        self,
+        image_path: str,
+        region: dict[str, Any],
+    ) -> tuple[int, int, int]:
+        """Estimate the font color from a text region.
+
+        Args:
+            image_path: Path to the image
+            region: Text region dict with box coordinates
+
+        Returns:
+            RGB tuple of the estimated font color
+        """
+        import cv2
+        import numpy as np
+
+        image = cv2.imread(image_path)
+        box = region["box"]
+
+        # Extract the text region
+        x, y, w, h = box["x"], box["y"], box["width"], box["height"]
+        roi = image[y:y+h, x:x+w]
+
+        if roi.size == 0:
+            return (0, 0, 0)  # Default to black
+
+        # Convert to grayscale to find text pixels (usually darker or lighter than background)
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+
+        # Use Otsu's threshold to separate text from background
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # Determine if text is dark on light or light on dark
+        mean_val = np.mean(gray)
+        if mean_val > 127:
+            # Light background, text is in dark pixels
+            text_mask = binary == 0
+        else:
+            # Dark background, text is in light pixels
+            text_mask = binary == 255
+
+        # Get average color of text pixels
+        if np.any(text_mask):
+            text_pixels = roi[text_mask]
+            avg_color = np.mean(text_pixels, axis=0)
+            # Convert BGR to RGB
+            return (int(avg_color[2]), int(avg_color[1]), int(avg_color[0]))
+
+        return (0, 0, 0)  # Default to black
+
+    @tool()
+    async def images_to_editable_pptx(
+        self,
+        image_paths: list[str],
+        output_path: str,
+        lang: str = "ch",
+        inpaint_method: str = "telea",
+        slide_width_inches: float = 13.333,
+        slide_height_inches: float = 7.5,
+        min_font_size: int = 10,
+        max_font_size: int = 44,
+    ) -> dict[str, Any]:
+        """Convert slide images to an editable PowerPoint presentation.
+
+        This tool:
+        1. Uses OCR to detect text and its positions in each image
+        2. Removes text from images using inpainting to create clean backgrounds
+        3. Generates a PPTX with background images and editable text boxes
+
+        Args:
+            image_paths: List of paths to slide images (in order)
+            output_path: Path for the output .pptx file
+            lang: OCR language ('ch' for Chinese+English, 'en' for English only)
+            inpaint_method: Background reconstruction method ('telea', 'ns', or 'lama')
+            slide_width_inches: Slide width in inches (default: 16:9 widescreen)
+            slide_height_inches: Slide height in inches
+            min_font_size: Minimum font size in points
+            max_font_size: Maximum font size in points
+
+        Returns:
+            Status with output path and processing details
+        """
+        try:
+            import cv2
+            from pptx import Presentation
+            from pptx.util import Inches, Pt
+            from pptx.dml.color import RGBColor
+            from pptx.enum.text import PP_ALIGN
+        except ImportError as e:
+            missing = str(e).split("'")[1] if "'" in str(e) else str(e)
+            return {
+                "success": False,
+                "error": f"Missing dependency: {missing}",
+                "hint": "Install with: pip install python-pptx opencv-python paddlepaddle paddleocr",
+            }
+
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create presentation with specified dimensions
+        prs = Presentation()
+        prs.slide_width = Inches(slide_width_inches)
+        prs.slide_height = Inches(slide_height_inches)
+
+        # Use blank layout
+        blank_layout = prs.slide_layouts[6]  # Blank slide
+
+        processed_slides = []
+        temp_files = []  # Track temp files for cleanup
+
+        try:
+            for idx, image_path in enumerate(image_paths):
+                slide_info = {
+                    "page": idx + 1,
+                    "image": image_path,
+                    "text_regions": 0,
+                    "status": "processing",
+                }
+
+                if not Path(image_path).exists():
+                    slide_info["status"] = "error"
+                    slide_info["error"] = "Image file not found"
+                    processed_slides.append(slide_info)
+                    continue
+
+                # Step 1: Detect text regions
+                try:
+                    text_regions = self._detect_text_regions(image_path, lang)
+                    slide_info["text_regions"] = len(text_regions)
+                except Exception as e:
+                    slide_info["status"] = "error"
+                    slide_info["error"] = f"OCR failed: {str(e)}"
+                    processed_slides.append(slide_info)
+                    continue
+
+                # Step 2: Create background image (with text removed)
+                image = cv2.imread(image_path)
+                img_height, img_width = image.shape[:2]
+
+                if text_regions:
+                    # Create mask and inpaint
+                    mask = self._create_text_mask(
+                        (img_width, img_height),
+                        text_regions,
+                        dilate_pixels=8,
+                    )
+                    background = self._inpaint_background(
+                        image_path, mask, method=inpaint_method
+                    )
+                else:
+                    # No text detected, use original image
+                    background = image
+
+                # Save background to temp file
+                temp_bg_path = output_file.parent / f"_temp_bg_{idx}.png"
+                cv2.imwrite(str(temp_bg_path), background)
+                temp_files.append(temp_bg_path)
+
+                # Step 3: Create slide with background
+                slide = prs.slides.add_slide(blank_layout)
+
+                # Add background image (full slide size)
+                slide.shapes.add_picture(
+                    str(temp_bg_path),
+                    Inches(0),
+                    Inches(0),
+                    width=prs.slide_width,
+                    height=prs.slide_height,
+                )
+
+                # Step 4: Add text boxes for each detected text region
+                # Calculate scale factors (image pixels to slide inches)
+                scale_x = slide_width_inches / img_width
+                scale_y = slide_height_inches / img_height
+
+                for region in text_regions:
+                    box = region["box"]
+
+                    # Convert pixel coordinates to inches
+                    left = Inches(box["x"] * scale_x)
+                    top = Inches(box["y"] * scale_y)
+                    width = Inches(box["width"] * scale_x)
+                    height = Inches(box["height"] * scale_y)
+
+                    # Add text box
+                    textbox = slide.shapes.add_textbox(left, top, width, height)
+                    tf = textbox.text_frame
+                    tf.word_wrap = False
+
+                    # Add text
+                    p = tf.paragraphs[0]
+                    p.text = region["text"]
+
+                    # Set font size (scaled and clamped)
+                    font_size = int(region["estimated_font_size"] * scale_y * 72)
+                    font_size = max(min_font_size, min(font_size, max_font_size))
+                    p.font.size = Pt(font_size)
+
+                    # Estimate and set font color
+                    try:
+                        r, g, b = self._estimate_font_color(image_path, region)
+                        p.font.color.rgb = RGBColor(r, g, b)
+                    except Exception:
+                        # Default to black on error
+                        p.font.color.rgb = RGBColor(0, 0, 0)
+
+                    # Center align (common for slides)
+                    p.alignment = PP_ALIGN.LEFT
+
+                slide_info["status"] = "success"
+                processed_slides.append(slide_info)
+
+            # Save presentation
+            prs.save(str(output_file))
+
+            # Cleanup temp files
+            for temp_file in temp_files:
+                try:
+                    temp_file.unlink()
+                except Exception:
+                    pass
+
+            # Summary
+            success_count = sum(1 for s in processed_slides if s["status"] == "success")
+            total_text_regions = sum(s.get("text_regions", 0) for s in processed_slides)
+
+            return {
+                "success": True,
+                "message": f"Created editable PPTX with {success_count}/{len(image_paths)} slides",
+                "output_path": str(output_file),
+                "total_slides": len(image_paths),
+                "successful_slides": success_count,
+                "total_text_regions": total_text_regions,
+                "slides": processed_slides,
+            }
+
+        except Exception as e:
+            # Cleanup temp files on error
+            for temp_file in temp_files:
+                try:
+                    temp_file.unlink()
+                except Exception:
+                    pass
+
+            return {
+                "success": False,
+                "error": f"PPTX generation failed: {str(e)}",
+            }
+
     @tool()
     async def notebookllm_close_browser(self) -> dict[str, Any]:
         """Close the browser connection (does not close the actual browser).
