@@ -4,8 +4,12 @@ Browser automation tools for interacting with Google NotebookLLM.
 Provides capabilities to add notes, generate infographics and presentations,
 and download generated content.
 
-Uses the shared BrowserManager utility for Chrome DevTools Protocol (CDP) connection.
-Start Chrome with: google-chrome --remote-debugging-port=9222
+Uses browser_session for remote Chrome DevTools Protocol (CDP) connection.
+
+Configuration via environment variables:
+    CHROME_DEBUG_HOST: Remote Chrome host (e.g., chrome.example.com)
+    CHROME_DEBUG_PORT: Remote Chrome port (default: 443 for TLS, 9222 otherwise)
+    CHROME_DEBUG_TLS: Use TLS (true/false)
 
 Requirements:
     - playwright
@@ -35,7 +39,12 @@ from pydantic import Field
 
 from odin.decorators import tool
 from odin.plugins import DecoratorPlugin, PluginConfig
-from odin.utils.browser import get_browser_manager
+from odin.utils.browser_session import (
+    BrowserConfig,
+    BrowserSession,
+    get_browser_session,
+    cleanup_all_browser_sessions,
+)
 
 
 class NotebookLLMPlugin(DecoratorPlugin):
@@ -47,7 +56,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
 
     def __init__(self, config: PluginConfig | None = None) -> None:
         super().__init__(config)
-        self._browser_manager = get_browser_manager()
+        self._session: BrowserSession | None = None
 
     @property
     def name(self) -> str:
@@ -61,13 +70,21 @@ class NotebookLLMPlugin(DecoratorPlugin):
     def description(self) -> str:
         return "NotebookLLM automation tools for notes, infographics, and presentations"
 
+    async def _get_session(self) -> BrowserSession:
+        """Get browser session from pool (uses environment config)."""
+        if self._session is None or self._session.page is None:
+            self._session = await get_browser_session()
+        return self._session
+
     async def _get_page(self):
-        """Get browser page from shared BrowserManager."""
-        return await self._browser_manager.get_page()
+        """Get browser page from session."""
+        session = await self._get_session()
+        return session.page
 
     async def _close_browser(self) -> None:
         """Disconnect from browser (does not close the browser)."""
-        await self._browser_manager.close()
+        await cleanup_all_browser_sessions()
+        self._session = None
 
     async def _wait_for_notebookllm_ready(self, page, timeout: int = 60) -> bool:
         """Wait for NotebookLLM page to be ready (logged in and loaded)."""

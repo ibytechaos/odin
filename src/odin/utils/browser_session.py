@@ -2,16 +2,29 @@
 
 This module provides a high-level browser automation wrapper for
 web-based operations like RPA, scraping, and content publishing.
+
+Supports both local browser launch and remote Chrome DevTools Protocol (CDP) connection.
+
+Usage:
+    # Simple remote connection
+    config = BrowserConfig(host="chrome.example.com", port=443, tls=True)
+    async with BrowserSession(config) as session:
+        await session.navigate("https://example.com")
+
+    # Or use the global session pool
+    session = await get_browser_session(host="chrome.example.com", port=443, tls=True)
+    await session.navigate("https://example.com")
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+import os
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, TypeVar
-from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -22,46 +35,76 @@ class BrowserSessionError(Exception):
     """Base error for browser session operations."""
 
 
-class BrowserLoginTimeout(BrowserSessionError):
-    """Raised when waiting for login times out."""
+class BrowserConnectionError(BrowserSessionError):
+    """Raised when unable to connect to browser."""
+
+
+# Backwards compatibility alias
+BrowserLoginTimeout = BrowserSessionError
 
 
 @dataclass
 class BrowserConfig:
-    """Browser session configuration."""
+    """Browser session configuration.
 
+    For remote Chrome connection:
+        config = BrowserConfig(host="chrome.example.com", port=443, tls=True)
+
+    For local browser:
+        config = BrowserConfig()  # Will launch new browser
+    """
+
+    # Remote connection settings (primary use case)
+    host: str | None = None
+    port: int = 9222
+    tls: bool = False
+
+    # Local browser settings
     headless: bool = False
     executable_path: str | None = None
-    user_agent: str | None = None
-    viewport_width: int = 1440
-    viewport_height: int = 900
-    storage_state_path: Path | None = None
-    reuse_existing: bool = False
-    debug_host: str | None = None
-    debug_port: int | None = None
-    debug_scheme: str = "http"
-    ignore_cert_errors: bool = False
+
+    # Session settings
     timeout: int = 30000  # milliseconds
+    download_dir: str | None = None
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "BrowserConfig":
-        """Create config from dictionary."""
+    def from_env(cls) -> "BrowserConfig":
+        """Create config from environment variables.
+
+        Environment variables:
+            CHROME_DEBUG_HOST: Remote Chrome host
+            CHROME_DEBUG_PORT: Remote Chrome port (default: 9222, or 443 for TLS)
+            CHROME_DEBUG_TLS: Use TLS (true/false)
+            BROWSER_DOWNLOAD_DIR: Download directory
+            BROWSER_HEADLESS: Run headless (true/false)
+        """
+        host = os.environ.get("CHROME_DEBUG_HOST")
+        tls = os.environ.get("CHROME_DEBUG_TLS", "").lower() in ("true", "1", "yes")
+
+        # Default port based on TLS
+        default_port = 443 if tls else 9222
+        port = int(os.environ.get("CHROME_DEBUG_PORT", default_port))
+
         return cls(
-            headless=data.get("headless", False),
-            executable_path=data.get("executable_path"),
-            user_agent=data.get("user_agent"),
-            viewport_width=data.get("viewport_width", 1440),
-            viewport_height=data.get("viewport_height", 900),
-            storage_state_path=Path(data["storage_state_path"])
-            if data.get("storage_state_path")
-            else None,
-            reuse_existing=data.get("reuse_existing", False),
-            debug_host=data.get("debug_host"),
-            debug_port=data.get("debug_port"),
-            debug_scheme=data.get("debug_scheme", "http"),
-            ignore_cert_errors=data.get("ignore_cert_errors", False),
-            timeout=data.get("timeout", 30000),
+            host=host,
+            port=port,
+            tls=tls,
+            headless=os.environ.get("BROWSER_HEADLESS", "").lower() in ("true", "1", "yes"),
+            download_dir=os.environ.get("BROWSER_DOWNLOAD_DIR"),
         )
+
+    @property
+    def is_remote(self) -> bool:
+        """Check if this config is for remote connection."""
+        return self.host is not None
+
+    @property
+    def cdp_url(self) -> str:
+        """Build CDP URL for remote connection."""
+        if not self.host:
+            return "http://localhost:9222"
+        scheme = "https" if self.tls else "http"
+        return f"{scheme}://{self.host}:{self.port}"
 
 
 class BrowserSession:
@@ -72,6 +115,7 @@ class BrowserSession:
 
     Example:
         ```python
+        config = BrowserConfig(host="chrome.example.com", port=443, tls=True)
         async with BrowserSession(config) as session:
             await session.navigate("https://example.com")
             content = await session.get_content()
@@ -89,7 +133,7 @@ class BrowserSession:
         self.browser = None
         self.context = None
         self.page = None
-        self._background_tasks: list[asyncio.Task] = []
+        self._download_dir: str | None = None
 
     async def start(self) -> None:
         """Initialize Playwright and obtain a ready-to-use page."""
@@ -104,36 +148,23 @@ class BrowserSession:
             )
 
         logger.info(
-            "Initializing browser session (headless=%s, reuse_existing=%s)",
-            self.config.headless,
-            self.config.reuse_existing,
+            "Initializing browser session (remote=%s, host=%s)",
+            self.config.is_remote,
+            self.config.host,
         )
 
         self.playwright = await async_playwright().__aenter__()
 
-        if self.config.reuse_existing and self.config.debug_port:
-            await self._connect_existing_browser()
+        if self.config.is_remote:
+            await self._connect_remote()
         else:
-            await self._launch_new_browser()
+            await self._launch_local()
 
-        if not await self._ensure_active_page():
+        if not self.page:
             raise BrowserSessionError("Failed to initialize browser page")
 
     async def close(self) -> None:
         """Cleanup browser resources."""
-        # Cancel background tasks
-        for task in list(self._background_tasks):
-            if not task.done():
-                task.cancel()
-
-        # Save storage state if configured
-        if self.context and self.config.storage_state_path:
-            try:
-                await self._save_storage_state()
-            except Exception as exc:
-                logger.warning("Failed to save storage state: %s", exc)
-
-        # Close resources in order
         if self.page:
             try:
                 await self.page.close()
@@ -173,8 +204,8 @@ class BrowserSession:
     # Browser initialization
     # -------------------------------------------------------------------------
 
-    async def _launch_new_browser(self) -> None:
-        """Launch a new browser instance."""
+    async def _launch_local(self) -> None:
+        """Launch a new local browser instance."""
         launch_options: dict[str, Any] = {
             "headless": self.config.headless,
         }
@@ -182,38 +213,26 @@ class BrowserSession:
             launch_options["executable_path"] = self.config.executable_path
 
         self.browser = await self.playwright.chromium.launch(**launch_options)
-
-        # Context options
-        context_kwargs: dict[str, Any] = {
-            "viewport": {
-                "width": self.config.viewport_width,
-                "height": self.config.viewport_height,
-            },
-        }
-        if self.config.user_agent:
-            context_kwargs["user_agent"] = self.config.user_agent
-        if self.config.storage_state_path and self.config.storage_state_path.exists():
-            context_kwargs["storage_state"] = str(self.config.storage_state_path)
-
-        self.context = await self.browser.new_context(**context_kwargs)
+        self.context = await self.browser.new_context(
+            viewport={"width": 1440, "height": 900},
+            accept_downloads=True,
+        )
         self.page = await self.context.new_page()
+        logger.info("Launched new local browser instance")
 
-        logger.info("Launched new browser instance")
-
-    async def _connect_existing_browser(self) -> None:
-        """Connect to an existing browser via CDP."""
-        cdp_url = self._build_cdp_url()
+    async def _connect_remote(self) -> None:
+        """Connect to a remote browser via CDP."""
+        cdp_url = self.config.cdp_url
 
         try:
-            logger.info("Connecting to existing browser at %s", cdp_url)
+            logger.info("Connecting to remote browser at %s", cdp_url)
 
-            # Try different connection strategies
-            try:
-                self.browser = await self.playwright.chromium.connect_over_cdp(cdp_url)
-            except Exception:
-                # Try WebSocket connection
-                ws_url = await self._get_ws_endpoint(cdp_url)
-                self.browser = await self.playwright.chromium.connect_over_cdp(ws_url)
+            # Get WebSocket endpoint
+            ws_url = await self._get_ws_endpoint(cdp_url)
+            logger.debug("WebSocket endpoint: %s", ws_url)
+
+            # Connect via CDP
+            self.browser = await self.playwright.chromium.connect_over_cdp(ws_url)
 
             # Get existing context or create new one
             contexts = self.browser.contexts
@@ -225,57 +244,59 @@ class BrowserSession:
                 else:
                     self.page = await self.context.new_page()
             else:
-                self.context = await self.browser.new_context()
+                self.context = await self.browser.new_context(accept_downloads=True)
                 self.page = await self.context.new_page()
 
-            logger.info("Connected to existing browser")
+            logger.info("Connected to remote browser")
 
         except Exception as e:
-            raise BrowserSessionError(f"Failed to connect to existing browser: {e}")
-
-    def _build_cdp_url(self) -> str:
-        """Build CDP URL from config."""
-        scheme = self.config.debug_scheme
-        host = self.config.debug_host or "localhost"
-        port = self.config.debug_port or 9222
-        return f"{scheme}://{host}:{port}"
+            error_msg = str(e)
+            raise BrowserConnectionError(
+                f"Failed to connect to browser at {cdp_url}. "
+                f"Make sure Chrome is running with remote debugging enabled. "
+                f"Error: {error_msg}"
+            ) from e
 
     async def _get_ws_endpoint(self, cdp_url: str) -> str:
         """Get WebSocket endpoint from CDP URL."""
         import aiohttp
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{cdp_url}/json/version") as response:
-                data = await response.json()
-                return data.get("webSocketDebuggerUrl", "")
+        # Use the same TLS setting for the HTTP request
+        ssl_context = None
+        if self.config.tls:
+            import ssl
+            ssl_context = ssl.create_default_context()
 
-    async def _ensure_active_page(self) -> bool:
-        """Ensure we have an active page."""
-        if self.page is None:
-            if self.context:
-                self.page = await self.context.new_page()
-        return self.page is not None
+        connector = aiohttp.TCPConnector(ssl=ssl_context)
 
-    async def _save_storage_state(self) -> None:
-        """Save browser storage state for session persistence."""
-        if self.context and self.config.storage_state_path:
-            await self.context.storage_state(path=str(self.config.storage_state_path))
-            logger.info("Saved storage state to %s", self.config.storage_state_path)
+        try:
+            async with aiohttp.ClientSession(connector=connector) as http_session:
+                async with http_session.get(
+                    f"{cdp_url}/json/version",
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    data = await response.json()
+                    ws_url = data.get("webSocketDebuggerUrl", "")
+
+                    # If TLS, ensure WebSocket URL uses wss://
+                    if self.config.tls and ws_url.startswith("ws://"):
+                        ws_url = "wss://" + ws_url[5:]
+
+                    return ws_url
+        except Exception as e:
+            raise BrowserConnectionError(
+                f"Failed to get WebSocket endpoint from {cdp_url}/json/version: {e}"
+            ) from e
 
     # -------------------------------------------------------------------------
     # Page operations
     # -------------------------------------------------------------------------
 
     async def navigate(self, url: str, wait_until: str = "domcontentloaded") -> None:
-        """Navigate to a URL.
-
-        Args:
-            url: Target URL
-            wait_until: When to consider navigation complete
-        """
+        """Navigate to a URL."""
         if not self.page:
             raise BrowserSessionError("Browser not started")
-        await self.page.goto(url, wait_until=wait_until)
+        await self.page.goto(url, wait_until=wait_until, timeout=self.config.timeout)
 
     async def get_content(self) -> str:
         """Get page HTML content."""
@@ -284,145 +305,143 @@ class BrowserSession:
         return await self.page.content()
 
     async def get_text(self, selector: str) -> str:
-        """Get text content of an element.
-
-        Args:
-            selector: CSS selector
-
-        Returns:
-            Element text content
-        """
+        """Get text content of an element."""
         if not self.page:
             raise BrowserSessionError("Browser not started")
-        element = await self.page.wait_for_selector(selector)
+        element = await self.page.wait_for_selector(selector, timeout=self.config.timeout)
         return await element.text_content() if element else ""
 
     async def click(self, selector: str) -> None:
-        """Click an element.
-
-        Args:
-            selector: CSS selector
-        """
+        """Click an element."""
         if not self.page:
             raise BrowserSessionError("Browser not started")
         await self.page.click(selector)
 
     async def fill(self, selector: str, value: str) -> None:
-        """Fill an input field.
-
-        Args:
-            selector: CSS selector
-            value: Value to fill
-        """
+        """Fill an input field."""
         if not self.page:
             raise BrowserSessionError("Browser not started")
         await self.page.fill(selector, value)
 
-    async def screenshot(
-        self, path: str | None = None, full_page: bool = False
-    ) -> bytes:
-        """Take a screenshot.
-
-        Args:
-            path: Optional path to save screenshot
-            full_page: Capture full page or just viewport
-
-        Returns:
-            Screenshot bytes
-        """
+    async def screenshot(self, path: str | None = None, full_page: bool = False) -> bytes:
+        """Take a screenshot."""
         if not self.page:
             raise BrowserSessionError("Browser not started")
         return await self.page.screenshot(path=path, full_page=full_page)
 
-    async def wait_for_selector(
-        self, selector: str, timeout: int | None = None
-    ) -> Any:
-        """Wait for an element to appear.
-
-        Args:
-            selector: CSS selector
-            timeout: Timeout in milliseconds
-
-        Returns:
-            Element handle
-        """
+    async def wait_for_selector(self, selector: str, timeout: int | None = None, state: str = "visible") -> Any:
+        """Wait for an element to appear."""
         if not self.page:
             raise BrowserSessionError("Browser not started")
         return await self.page.wait_for_selector(
-            selector, timeout=timeout or self.config.timeout
+            selector, timeout=timeout or self.config.timeout, state=state
         )
 
     async def evaluate(self, expression: str) -> Any:
-        """Evaluate JavaScript in page context.
-
-        Args:
-            expression: JavaScript expression
-
-        Returns:
-            Evaluation result
-        """
+        """Evaluate JavaScript in page context."""
         if not self.page:
             raise BrowserSessionError("Browser not started")
         return await self.page.evaluate(expression)
 
     async def set_files(self, selector: str, files: list[str]) -> None:
-        """Set files for a file input.
-
-        Args:
-            selector: CSS selector for file input
-            files: List of file paths
-        """
+        """Set files for a file input."""
         if not self.page:
             raise BrowserSessionError("Browser not started")
         await self.page.set_input_files(selector, files)
 
+    async def query_selector(self, selector: str) -> Any:
+        """Query a single element."""
+        if not self.page:
+            raise BrowserSessionError("Browser not started")
+        return await self.page.query_selector(selector)
+
+    async def query_selector_all(self, selector: str) -> list[Any]:
+        """Query all matching elements."""
+        if not self.page:
+            raise BrowserSessionError("Browser not started")
+        return await self.page.query_selector_all(selector)
+
+    @property
+    def url(self) -> str:
+        """Get current page URL."""
+        if not self.page:
+            return ""
+        return self.page.url
+
+    @property
+    def download_dir(self) -> str:
+        """Get download directory, creating if needed."""
+        if self._download_dir is None:
+            self._download_dir = self.config.download_dir or tempfile.mkdtemp(prefix="odin_browser_")
+            Path(self._download_dir).mkdir(parents=True, exist_ok=True)
+        return self._download_dir
+
 
 # -------------------------------------------------------------------------
-# Session pool for managing multiple browser instances
+# Session pool for managing browser instances
 # -------------------------------------------------------------------------
 
 _session_pool: dict[str, BrowserSession] = {}
 _session_lock = asyncio.Lock()
 
 
-def _normalize_config_key(config: BrowserConfig | None) -> str:
-    """Generate a unique key for a browser config."""
-    if not config:
-        return "__default__"
-    if config.debug_host:
-        return f"{config.debug_host}:{config.debug_port or 9222}"
-    return "__default__"
+def _get_session_key(host: str | None, port: int, tls: bool) -> str:
+    """Generate a unique key for session pooling."""
+    if host:
+        return f"{'https' if tls else 'http'}://{host}:{port}"
+    return "__local__"
 
 
-async def get_browser_session(config: BrowserConfig | None = None) -> BrowserSession:
+async def get_browser_session(
+    host: str | None = None,
+    port: int | None = None,
+    tls: bool = False,
+    config: BrowserConfig | None = None,
+) -> BrowserSession:
     """Get or create a browser session.
 
     Args:
-        config: Browser configuration
+        host: Remote Chrome host (e.g., "chrome.example.com")
+        port: Remote Chrome port (default: 443 for TLS, 9222 otherwise)
+        tls: Use TLS/HTTPS
+        config: Full BrowserConfig (overrides host/port/tls if provided)
 
     Returns:
         Browser session instance
     """
-    key = _normalize_config_key(config)
+    if config is None:
+        # Try environment variables if no host specified
+        if host is None:
+            config = BrowserConfig.from_env()
+        else:
+            if port is None:
+                port = 443 if tls else 9222
+            config = BrowserConfig(host=host, port=port, tls=tls)
+
+    key = _get_session_key(config.host, config.port, config.tls)
 
     async with _session_lock:
         session = _session_pool.get(key)
-        if not session:
+        if session is None or session.page is None:
             session = BrowserSession(config)
             await session.start()
             _session_pool[key] = session
-        elif session.page is None:
-            await session.start()
         return session
 
 
-async def cleanup_browser_session(config: BrowserConfig | None = None) -> None:
-    """Cleanup a specific browser session.
-
-    Args:
-        config: Browser configuration to identify session
-    """
-    key = _normalize_config_key(config)
+async def cleanup_browser_session(
+    host: str | None = None,
+    port: int | None = None,
+    tls: bool = False,
+    config: BrowserConfig | None = None,
+) -> None:
+    """Cleanup a specific browser session."""
+    if config:
+        key = _get_session_key(config.host, config.port, config.tls)
+    else:
+        if port is None:
+            port = 443 if tls else 9222
+        key = _get_session_key(host, port, tls)
 
     async with _session_lock:
         session = _session_pool.pop(key, None)
@@ -449,26 +468,23 @@ async def cleanup_all_browser_sessions() -> None:
 
 async def run_with_browser(
     fn: Callable[[BrowserSession], Awaitable[T]],
+    host: str | None = None,
+    port: int | None = None,
+    tls: bool = False,
     config: BrowserConfig | None = None,
 ) -> T:
     """Run an operation with a browser session.
 
     This function handles session pooling and error recovery.
-
-    Args:
-        fn: Async function to run with browser session
-        config: Browser configuration
-
-    Returns:
-        Function result
     """
-    key = _normalize_config_key(config)
-    session = await get_browser_session(config)
+    session = await get_browser_session(host=host, port=port, tls=tls, config=config)
 
     try:
         return await fn(session)
     except Exception as e:
-        # Clean up session on error to prevent state pollution
         logger.warning("Browser operation failed, cleaning up session: %s", e)
-        await cleanup_browser_session(config)
+        if config:
+            await cleanup_browser_session(config=config)
+        else:
+            await cleanup_browser_session(host=host, port=port, tls=tls)
         raise

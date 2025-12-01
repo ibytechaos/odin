@@ -1,48 +1,44 @@
 """Odin utility modules.
 
 This module provides common utilities used across Odin:
-- Browser automation (CDP-based and Playwright)
+- Browser automation (Playwright-based with CDP support)
 - Progress tracking for long-running operations
 - HTTP client helpers
 """
 
-from odin.utils.browser import BrowserManager, get_browser_manager
 from odin.utils.browser_session import (
-    BrowserSession,
     BrowserConfig,
+    BrowserConnectionError,
+    BrowserSession,
     BrowserSessionError,
-    BrowserLoginTimeout,
-    get_browser_session,
-    cleanup_browser_session,
     cleanup_all_browser_sessions,
+    cleanup_browser_session,
+    get_browser_session,
     run_with_browser,
-)
-from odin.utils.progress import (
-    ProgressTracker,
-    ProgressEvent,
-    progress_tracker,
 )
 from odin.utils.http_client import (
     AsyncHTTPClient,
     HTTPClientError,
 )
+from odin.utils.progress import (
+    ProgressEvent,
+    ProgressTracker,
+    progress_tracker,
+)
 
 __all__ = [
-    # Browser Manager (CDP-based singleton)
-    "BrowserManager",
-    "get_browser_manager",
-    # Browser Session (Playwright-based pooled sessions)
-    "BrowserSession",
+    # Browser Session (Playwright-based with CDP support)
     "BrowserConfig",
+    "BrowserConnectionError",
+    "BrowserSession",
     "BrowserSessionError",
-    "BrowserLoginTimeout",
-    "get_browser_session",
-    "cleanup_browser_session",
     "cleanup_all_browser_sessions",
+    "cleanup_browser_session",
+    "get_browser_session",
     "run_with_browser",
     # Progress Tracking
-    "ProgressTracker",
     "ProgressEvent",
+    "ProgressTracker",
     "progress_tracker",
     # HTTP Client
     "AsyncHTTPClient",
