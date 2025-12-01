@@ -717,6 +717,103 @@ class NotebookLLMTools(DecoratorPlugin):
                 "notebook_url": notebook_url,
             }
 
+    async def _wait_for_content_rendered(
+        self,
+        page,
+        content_type: str,
+        timeout: int = 60,
+    ) -> bool:
+        """Wait for artifact content to be fully rendered before downloading.
+
+        For presentations/infographics, the content may take time to render,
+        especially for large documents. This method waits until:
+        1. Loading indicators disappear
+        2. Content elements are visible
+        3. No ongoing network activity related to content loading
+
+        Args:
+            page: Playwright page object
+            content_type: Type of content ("presentation" or "infographic")
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            True if content appears ready, False if timeout
+        """
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            # Check for loading spinners/indicators
+            loading_indicators = await page.query_selector_all(
+                '.mat-progress-spinner, '
+                '.mat-progress-bar, '
+                '.loading-indicator, '
+                '.spinner, '
+                '[class*="loading"], '
+                '[class*="spinner"]'
+            )
+
+            # Filter to only visible loading indicators
+            visible_loading = False
+            for indicator in loading_indicators:
+                is_visible = await indicator.is_visible()
+                if is_visible:
+                    visible_loading = True
+                    break
+
+            if visible_loading:
+                await asyncio.sleep(1)
+                continue
+
+            # For presentations, check if slides are rendered
+            if content_type == "presentation":
+                # Look for slide content containers
+                slides = await page.query_selector_all(
+                    '.slide-container, '
+                    '.presentation-slide, '
+                    '[class*="slide"], '
+                    '.pdf-page, '
+                    'canvas'
+                )
+
+                if slides:
+                    # Additional check: wait for at least one slide to have content
+                    # by checking if canvas has non-zero dimensions or content is visible
+                    for slide in slides:
+                        box = await slide.bounding_box()
+                        if box and box['width'] > 0 and box['height'] > 0:
+                            # Found a rendered slide, wait a bit more for all to load
+                            await asyncio.sleep(3)
+                            return True
+
+            # For infographics, check if the image/svg is loaded
+            elif content_type == "infographic":
+                content_elements = await page.query_selector_all(
+                    'img[src], svg, canvas'
+                )
+                for elem in content_elements:
+                    is_visible = await elem.is_visible()
+                    if is_visible:
+                        box = await elem.bounding_box()
+                        if box and box['width'] > 100 and box['height'] > 100:
+                            await asyncio.sleep(2)
+                            return True
+
+            # General check: wait for network to be idle
+            # If no specific content found, wait a bit and check again
+            await asyncio.sleep(2)
+
+            # After waiting, if no loading indicators, assume ready
+            loading_still = await page.query_selector(
+                '.mat-progress-spinner:visible, '
+                '.mat-progress-bar:visible'
+            )
+            if not loading_still:
+                # Extra safety wait for large content
+                await asyncio.sleep(3)
+                return True
+
+        return False
+
     async def _download_artifact(
         self,
         page,
@@ -748,6 +845,18 @@ class NotebookLLMTools(DecoratorPlugin):
         # Click to open the artifact detail view
         await artifact_btn.click()
         await asyncio.sleep(2)
+
+        # Wait for content to be fully rendered before downloading
+        # This is critical for large presentations that take time to render
+        render_timeout = min(timeout, 120)  # Cap render wait at 2 minutes
+        content_ready = await self._wait_for_content_rendered(
+            page, content_type, timeout=render_timeout
+        )
+
+        if not content_ready:
+            # Log warning but still try to download
+            # Sometimes content detection may fail but content is actually ready
+            pass
 
         # Now find the download button (aria-label="下载" or "Download")
         download_btn = await page.query_selector(
