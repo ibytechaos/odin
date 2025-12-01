@@ -717,6 +717,84 @@ class NotebookLLMTools(DecoratorPlugin):
                 "notebook_url": notebook_url,
             }
 
+    async def _download_artifact(
+        self,
+        page,
+        artifact_icon: str,
+        content_type: str,
+        output_path: Path,
+        timeout: int,
+    ) -> dict[str, Any] | None:
+        """Download a specific artifact by clicking it and then the download button.
+
+        Args:
+            page: Playwright page object
+            artifact_icon: The mat-icon text for the artifact (e.g., "stacked_bar_chart")
+            content_type: Type name for logging (e.g., "infographic")
+            output_path: Directory to save the file
+            timeout: Download timeout in seconds
+
+        Returns:
+            Download info dict or None if not found
+        """
+        # Find and click the artifact button in studio panel
+        artifact_btn = await page.query_selector(
+            f'button:has(mat-icon.artifact-icon:has-text("{artifact_icon}"))'
+        )
+
+        if not artifact_btn:
+            return None
+
+        # Click to open the artifact detail view
+        await artifact_btn.click()
+        await asyncio.sleep(2)
+
+        # Now find the download button (aria-label="下载" or "Download")
+        download_btn = await page.query_selector(
+            'button[aria-label="下载"], '
+            'button[aria-label="Download"], '
+            'button:has(mat-icon:has-text("save_alt"))'
+        )
+
+        if not download_btn:
+            # Try to close the detail view before returning
+            close_btn = await page.query_selector('button:has(mat-icon:has-text("close"))')
+            if close_btn:
+                await close_btn.click()
+                await asyncio.sleep(1)
+            return None
+
+        # Click download and wait for the file
+        try:
+            async with page.expect_download(timeout=timeout * 1000) as download_info:
+                await download_btn.click()
+
+            download = await download_info.value
+            suggested_name = download.suggested_filename
+            # Determine extension from suggested filename or default
+            ext = Path(suggested_name).suffix if suggested_name else ".png"
+            file_path = output_path / f"{content_type}_{int(time.time())}{ext}"
+            await download.save_as(str(file_path))
+
+            # Close the detail view
+            close_btn = await page.query_selector('button:has(mat-icon:has-text("close"))')
+            if close_btn:
+                await close_btn.click()
+                await asyncio.sleep(1)
+
+            return {
+                "type": content_type,
+                "path": str(file_path),
+                "original_name": suggested_name,
+            }
+        except Exception:
+            # Close the detail view on error
+            close_btn = await page.query_selector('button:has(mat-icon:has-text("close"))')
+            if close_btn:
+                await close_btn.click()
+                await asyncio.sleep(1)
+            return None
+
     @tool()
     async def notebookllm_download_content(
         self,
@@ -727,10 +805,13 @@ class NotebookLLMTools(DecoratorPlugin):
     ) -> dict[str, Any]:
         """Download generated content (infographic and/or presentation) from NotebookLLM.
 
+        This tool clicks on the artifact in the Studio panel to open its detail view,
+        then clicks the download button to save the file.
+
         Args:
             notebook_url: Full URL of the NotebookLLM notebook
             content_type: Type of content to download ("infographic", "presentation", or "all")
-            output_dir: Directory to save downloaded files (default: from config)
+            output_dir: Directory to save downloaded files (default: current directory)
             timeout: Maximum time to wait for downloads in seconds
 
         Returns:
@@ -739,11 +820,12 @@ class NotebookLLMTools(DecoratorPlugin):
         try:
             page = await self._get_page()
 
-            output_path = Path(output_dir) if output_dir else Path(self._browser_manager.download_dir)
+            output_path = Path(output_dir) if output_dir else Path.cwd()
             output_path.mkdir(parents=True, exist_ok=True)
 
             # Navigate to notebook
             await page.goto(notebook_url, wait_until="domcontentloaded")
+            await asyncio.sleep(2)
 
             if not await self._wait_for_notebookllm_ready(page, timeout=30):
                 return {
@@ -753,49 +835,21 @@ class NotebookLLMTools(DecoratorPlugin):
 
             downloaded_files = []
 
-            # Download infographic
+            # Download infographic (icon: stacked_bar_chart)
             if content_type in ("infographic", "all"):
-                # Find infographic download button
-                infographic_download = await page.query_selector(
-                    'button[aria-label*="Download infographic"], '
-                    'button[aria-label*="下载信息图"], '
-                    'a[download][href*="infographic"]'
+                result = await self._download_artifact(
+                    page, "stacked_bar_chart", "infographic", output_path, timeout
                 )
+                if result:
+                    downloaded_files.append(result)
 
-                if infographic_download:
-                    async with page.expect_download(timeout=timeout * 1000) as download_info:
-                        await infographic_download.click()
-
-                    download = await download_info.value
-                    file_path = output_path / f"infographic_{int(time.time())}.png"
-                    await download.save_as(str(file_path))
-                    downloaded_files.append({
-                        "type": "infographic",
-                        "path": str(file_path),
-                    })
-
-            # Download presentation
+            # Download presentation (icon: tablet)
             if content_type in ("presentation", "all"):
-                # Find presentation download button
-                presentation_download = await page.query_selector(
-                    'button[aria-label*="Download presentation"], '
-                    'button[aria-label*="下载演示文稿"], '
-                    'button:has-text("Download PDF"), '
-                    'a[download][href*="presentation"]'
+                result = await self._download_artifact(
+                    page, "tablet", "presentation", output_path, timeout
                 )
-
-                if presentation_download:
-                    async with page.expect_download(timeout=timeout * 1000) as download_info:
-                        await presentation_download.click()
-
-                    download = await download_info.value
-                    file_path = output_path / f"presentation_{int(time.time())}.pdf"
-                    await download.save_as(str(file_path))
-                    downloaded_files.append({
-                        "type": "presentation",
-                        "path": str(file_path),
-                        "format": "pdf",
-                    })
+                if result:
+                    downloaded_files.append(result)
 
             if not downloaded_files:
                 return {
