@@ -1,0 +1,55 @@
+# Odin Framework Docker Compose Configuration
+#
+# Usage:
+#   docker-compose up -d
+#
+# Prerequisites:
+#   - External 'services' network with Redis and PostgreSQL
+#   - External 'proxy' network with Traefik (optional)
+
+services:
+  odin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: odin
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      # Override database URLs to use Docker internal service names
+      DATABASE_URL: postgresql://odin:${POSTGRES_PASSWORD:-xietting}@postgres:5432/odin
+      REDIS_URL: redis://:${REDIS_PASSWORD:-xietting}@redis:6379/2
+      # OpenTelemetry (if using Jaeger in services network)
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    volumes:
+      # Code hot-reload (development mode)
+      - .:/app
+      # Obsidian vault mount
+      - ${HOME}/Documents/Obsidian/Odin:/obsidian
+      # Downloads directory
+      - ./downloads:/app/downloads
+      # Custom plugins
+      - ./plugins:/app/plugins:ro
+    networks:
+      - services
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.odin.rule=Host(`odin.mcp.ibytechaos.com`)"
+      - "traefik.http.routers.odin.entrypoints=websecure"
+      - "traefik.http.routers.odin.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.odin.middlewares=secure-headers@file"
+      - "traefik.http.services.odin.loadbalancer.server.port=8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  services:
+    external: true
+  proxy:
+    external: true

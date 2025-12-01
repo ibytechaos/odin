@@ -85,3 +85,5 @@ temp/
 .next
 node_modules
 debug*
+.swarm
+.claude-flow

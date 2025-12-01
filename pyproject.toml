@@ -97,6 +97,12 @@ notebookllm = [
     "pdf2image>=1.17.0",
 ]
 
+# Built-in plugins dependencies
+builtin-plugins = [
+    "aiohttp>=3.9.0",
+    "playwright>=1.49.0",
+]
+
 # PPT conversion tools (OCR + image processing)
 pptx-converter = [
     "paddlepaddle>=3.0.0",
@@ -111,7 +117,7 @@ pptx-converter = [
 
 # All optional dependencies
 all = [
-    "odin[dev,profiling,protocols,postgres,notebookllm,pptx-converter]",
+    "odin[dev,profiling,protocols,postgres,notebookllm,builtin-plugins,pptx-converter]",
 ]
 
 [project.urls]
