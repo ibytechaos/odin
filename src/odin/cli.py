@@ -23,11 +23,6 @@ def get_template_dir() -> Path:
     return Path(__file__).parent / "templates"
 
 
-def get_builtin_tools_dir() -> Path:
-    """Get the built-in tools directory path."""
-    return Path(__file__).parent / "tools"
-
-
 def copy_template(
     src_dir: Path,
     dest_dir: Path,
@@ -264,14 +259,15 @@ def list_agents(as_json: bool, include_builtin: bool, show_all: bool) -> None:
     async def _list():
         from odin import Odin
         from odin.config import Settings
+        from odin.plugins.builtin import BUILTIN_PLUGINS
 
         plugin_dirs: list[Path] = []
+        builtin_plugins_to_load: list[str] = []
 
-        # Add built-in tools if requested or not in project
+        # Add built-in plugins if requested or not in project
         if include_builtin or show_all or not project_root:
-            builtin_dir = get_builtin_tools_dir()
-            if builtin_dir.is_dir():
-                plugin_dirs.append(builtin_dir)
+            # Load all available builtin plugins
+            builtin_plugins_to_load = list(BUILTIN_PLUGINS.keys())
 
         # Add project tools if in project and not builtin-only mode
         if project_root and not include_builtin:
@@ -289,7 +285,8 @@ def list_agents(as_json: bool, include_builtin: bool, show_all: bool) -> None:
 
         settings = Settings(
             plugin_dirs=plugin_dirs,
-            plugin_auto_discovery=True,
+            plugin_auto_discovery=bool(plugin_dirs),
+            builtin_plugins=builtin_plugins_to_load,
         )
         odin = Odin(settings=settings)
         await odin.initialize()
@@ -403,14 +400,14 @@ def test(tool_name: str, params: tuple, json_params: str | None, builtin: bool) 
     async def _test():
         from odin import Odin
         from odin.config import Settings
+        from odin.plugins.builtin import BUILTIN_PLUGINS
 
         plugin_dirs: list[Path] = []
+        builtin_plugins_to_load: list[str] = []
 
-        # Add builtin tools if requested or not in project
+        # Add builtin plugins if requested or not in project
         if builtin or not project_root:
-            builtin_dir = get_builtin_tools_dir()
-            if builtin_dir.is_dir():
-                plugin_dirs.append(builtin_dir)
+            builtin_plugins_to_load = list(BUILTIN_PLUGINS.keys())
 
         # Add project tools if in project and not builtin-only mode
         if project_root and not builtin:
@@ -428,7 +425,8 @@ def test(tool_name: str, params: tuple, json_params: str | None, builtin: bool) 
 
         settings = Settings(
             plugin_dirs=plugin_dirs,
-            plugin_auto_discovery=True,
+            plugin_auto_discovery=bool(plugin_dirs),
+            builtin_plugins=builtin_plugins_to_load,
         )
         odin = Odin(settings=settings)
         await odin.initialize()
@@ -581,18 +579,15 @@ def serve(
 
         from odin import Odin
         from odin.config import Settings
+        from odin.plugins.builtin import BUILTIN_PLUGINS
 
         # Determine mode
         project_root = None if standalone else find_project_root()
         is_project_mode = project_root is not None
 
-        # Collect plugin directories
+        # Collect plugin directories and builtin plugins
         plugin_dirs: list[Path] = []
-
-        # Always include built-in tools
-        builtin_dir = get_builtin_tools_dir()
-        if builtin_dir.is_dir():
-            plugin_dirs.append(builtin_dir)
+        builtin_plugins_to_load = list(BUILTIN_PLUGINS.keys())
 
         # Add project tools if in project mode
         if is_project_mode:
@@ -613,13 +608,16 @@ def serve(
         else:
             click.echo(f"Mode: {click.style('Standalone', fg='yellow')}")
 
-        click.echo(f"Tool directories: {[str(d) for d in plugin_dirs]}")
+        click.echo(f"Builtin plugins: {builtin_plugins_to_load}")
+        if plugin_dirs:
+            click.echo(f"Plugin directories: {[str(d) for d in plugin_dirs]}")
         click.echo()
 
         # Create settings
         settings = Settings(
             plugin_dirs=plugin_dirs,
-            plugin_auto_discovery=True,
+            plugin_auto_discovery=bool(plugin_dirs),
+            builtin_plugins=builtin_plugins_to_load,
         )
 
         # Initialize Odin

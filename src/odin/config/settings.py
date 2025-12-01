@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     # Plugin settings
     plugin_auto_discovery: bool = True
     plugin_dirs: list[Path] = Field(default_factory=lambda: [Path("./plugins")])
+    builtin_plugins: list[str] = Field(
+        default_factory=lambda: ["http", "utilities"],
+        description="List of builtin plugins to load (e.g., http, utilities, github, google, trending)",
+    )
 
     # Security
     api_key: str | None = None
@@ -108,6 +112,14 @@ class Settings(BaseSettings):
             return [Path(p.strip()) for p in v.split(",")]
         if isinstance(v, list):
             return [Path(p) if isinstance(p, str) else p for p in v]
+        return v
+
+    @field_validator("builtin_plugins", mode="before")
+    @classmethod
+    def parse_builtin_plugins(cls, v: str | list[str]) -> list[str]:
+        """Parse builtin plugins from string or list."""
+        if isinstance(v, str):
+            return [p.strip() for p in v.split(",") if p.strip()]
         return v
 
     @field_validator("cors_origins", mode="before")

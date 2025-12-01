@@ -73,12 +73,37 @@ class Odin:
 
         logger.info("Initializing Odin framework")
 
+        # Load builtin plugins
+        if self.settings.builtin_plugins:
+            await self._load_builtin_plugins(self.settings.builtin_plugins)
+
         # Auto-discover plugins if enabled
         if self.settings.plugin_auto_discovery:
             await self._plugin_manager.discover_plugins(self.settings.plugin_dirs)
 
         self._initialized = True
         logger.info("Odin framework initialized successfully")
+
+    async def _load_builtin_plugins(self, plugin_names: list[str]) -> None:
+        """Load specified builtin plugins.
+
+        Args:
+            plugin_names: List of builtin plugin names to load
+        """
+        from odin.plugins.builtin import BUILTIN_PLUGINS
+
+        for name in plugin_names:
+            if name not in BUILTIN_PLUGINS:
+                logger.warning(f"Unknown builtin plugin: {name}, available: {list(BUILTIN_PLUGINS.keys())}")
+                continue
+
+            try:
+                plugin_class = BUILTIN_PLUGINS[name]
+                plugin = plugin_class()
+                await self._plugin_manager.register_plugin(plugin)
+                logger.info(f"Loaded builtin plugin: {name}")
+            except Exception as e:
+                logger.error(f"Failed to load builtin plugin {name}: {e}")
 
     async def shutdown(self) -> None:
         """Shutdown framework and cleanup resources."""

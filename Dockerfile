@@ -23,14 +23,19 @@ WORKDIR /app
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies
-RUN uv sync --frozen --no-dev
+# Install dependencies (with builtin-plugins extras for browser automation)
+RUN uv sync --frozen --no-dev --extra builtin-plugins
 
 # Copy source code
 COPY src/ ./src/
 
 # Install the package
 RUN uv pip install --no-deps -e .
+
+# Note: Playwright browsers are NOT installed in the container
+# We use remote Chrome debugging via CHROME_DEBUG_HOST instead
+# If you need local browser, uncomment:
+# RUN uv run playwright install chromium
 
 # ============================================
 # Stage 2: Runtime
