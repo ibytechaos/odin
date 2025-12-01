@@ -2,13 +2,18 @@
 """Odin CLI - Command line interface for the Odin framework.
 
 Commands:
+    odin serve                  Start Odin server (standalone or project mode)
     odin create <project-name>  Create a new Odin project
-    odin create --ui-only       Create UI only
-    odin create --agent-only    Create agent only
+    odin list                   List available agents/tools
+    odin test <agent-name>      Test an agent interactively
+    odin run <agent-name>       Run a specific agent
 """
 
+import asyncio
+import json
 import shutil
 from pathlib import Path
+from typing import Literal
 
 import click
 
@@ -16,6 +21,11 @@ import click
 def get_template_dir() -> Path:
     """Get the templates directory path."""
     return Path(__file__).parent / "templates"
+
+
+def get_builtin_tools_dir() -> Path:
+    """Get the built-in tools directory path."""
+    return Path(__file__).parent / "tools"
 
 
 def copy_template(
@@ -63,6 +73,78 @@ def copy_root_files(template_dir: Path, project_dir: Path, replacements: dict[st
                 (project_dir / filename).write_text(content)
             except UnicodeDecodeError:
                 shutil.copy2(src_file, project_dir / filename)
+
+
+def find_project_root() -> Path | None:
+    """Find the project root by looking for Odin project markers.
+
+    An Odin project is identified by:
+    - agent/tools/ directory (created by `odin create`)
+    - app.yaml config file
+    - tools/ directory with Python files
+    """
+    cwd = Path.cwd()
+
+    def is_odin_project(path: Path) -> bool:
+        """Check if a path is an Odin project root."""
+        # Check for agent/tools/ structure (from `odin create`)
+        agent_tools = path / "agent" / "tools"
+        if agent_tools.is_dir():
+            return True
+
+        # Check for app.yaml
+        if (path / "app.yaml").is_file():
+            return True
+
+        # Check for tools/ with Python files (simpler project)
+        tools_dir = path / "tools"
+        if tools_dir.is_dir():
+            # Must have at least one .py file
+            if any(tools_dir.glob("*.py")):
+                return True
+
+        return False
+
+    # Check if we're in a project root
+    if is_odin_project(cwd):
+        return cwd
+
+    # Check if we're in agent/ directory
+    if cwd.name == "agent" and (cwd / "tools").is_dir():
+        return cwd.parent
+
+    # Check parent directories (limited depth to avoid false positives)
+    for i, parent in enumerate(cwd.parents):
+        if i > 3:  # Don't search more than 3 levels up
+            break
+        if is_odin_project(parent):
+            return parent
+
+    return None
+
+
+def get_odin_instance(project_root: Path):
+    """Get an Odin instance for the project."""
+    import sys
+
+    # Add agent directory to path if exists
+    agent_dir = project_root / "agent"
+    if agent_dir.is_dir():
+        sys.path.insert(0, str(agent_dir))
+        tools_dir = agent_dir / "tools"
+    else:
+        tools_dir = project_root / "tools"
+
+    from odin import Odin
+    from odin.config import Settings
+
+    # Create settings with custom plugin directory
+    settings = Settings(
+        plugin_dirs=[tools_dir] if tools_dir.is_dir() else [],
+        plugin_auto_discovery=True,
+    )
+    odin = Odin(settings=settings)
+    return odin
 
 
 @click.group()
@@ -158,6 +240,501 @@ def create(name: str, ui_only: bool, agent_only: bool, title: str | None) -> Non
         click.echo("  cd ui")
         click.echo("  npm install")
         click.echo("  npm run dev")
+
+
+@cli.command("list")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.option("--builtin", "include_builtin", is_flag=True, help="Include built-in tools")
+@click.option("--all", "show_all", is_flag=True, help="Show all tools (builtin + project)")
+def list_agents(as_json: bool, include_builtin: bool, show_all: bool) -> None:
+    """List available agents and tools.
+
+    Examples:
+
+        odin list              # List project tools (or builtin if not in project)
+
+        odin list --builtin    # List built-in tools only
+
+        odin list --all        # List all tools (project + builtin)
+
+        odin list --json       # Output as JSON
+    """
+    project_root = find_project_root()
+
+    async def _list():
+        from odin import Odin
+        from odin.config import Settings
+
+        plugin_dirs: list[Path] = []
+
+        # Add built-in tools if requested or not in project
+        if include_builtin or show_all or not project_root:
+            builtin_dir = get_builtin_tools_dir()
+            if builtin_dir.is_dir():
+                plugin_dirs.append(builtin_dir)
+
+        # Add project tools if in project and not builtin-only mode
+        if project_root and not include_builtin:
+            import sys
+
+            agent_dir = project_root / "agent"
+            if agent_dir.is_dir():
+                sys.path.insert(0, str(agent_dir))
+                tools_dir = agent_dir / "tools"
+            else:
+                tools_dir = project_root / "tools"
+
+            if tools_dir.is_dir():
+                plugin_dirs.append(tools_dir)
+
+        settings = Settings(
+            plugin_dirs=plugin_dirs,
+            plugin_auto_discovery=True,
+        )
+        odin = Odin(settings=settings)
+        await odin.initialize()
+        return odin.list_tools()
+
+    try:
+        tools = asyncio.run(_list())
+    except Exception as e:
+        click.echo(click.style(f"Error loading tools: {e}", fg="red"))
+        raise SystemExit(1)
+
+    if as_json:
+        click.echo(json.dumps(tools, indent=2))
+        return
+
+    if not tools:
+        click.echo("No agents/tools found.")
+        if not project_root:
+            click.echo("Use --builtin to list built-in tools.")
+        else:
+            click.echo("Add tools in agent/tools/ directory.")
+        return
+
+    # Show mode
+    if include_builtin:
+        click.echo(click.style("Built-in tools:", fg="yellow"))
+    elif show_all:
+        click.echo(click.style("All tools (project + builtin):", fg="yellow"))
+    elif project_root:
+        click.echo(click.style(f"Project tools ({project_root.name}):", fg="green"))
+    else:
+        click.echo(click.style("Built-in tools (not in project):", fg="yellow"))
+
+    click.echo(click.style(f"Found {len(tools)} tool(s)", fg="cyan"))
+    click.echo()
+
+    for tool in tools:
+        name = tool.get("name", "unknown")
+        desc = tool.get("description", "No description")
+        click.echo(f"  {click.style(name, fg='cyan', bold=True)}")
+        click.echo(f"    {desc}")
+
+        # Show parameters if available
+        params = tool.get("parameters", [])
+        if params:
+            click.echo("    Parameters:")
+            # Handle both list format and dict format (JSON Schema)
+            if isinstance(params, list):
+                for param in params:
+                    param_name = param.get("name", "unknown")
+                    param_type = param.get("type", "any")
+                    param_desc = param.get("description", "")
+                    required = param.get("required", False)
+                    req_mark = "*" if required else ""
+                    click.echo(f"      - {param_name}{req_mark} ({param_type}): {param_desc}")
+            elif isinstance(params, dict):
+                # JSON Schema format
+                properties = params.get("properties", {})
+                required_list = params.get("required", [])
+                for param_name, param_info in properties.items():
+                    param_type = param_info.get("type", "any")
+                    param_desc = param_info.get("description", "")
+                    required = param_name in required_list
+                    req_mark = "*" if required else ""
+                    click.echo(f"      - {param_name}{req_mark} ({param_type}): {param_desc}")
+        click.echo()
+
+
+@cli.command()
+@click.argument("tool_name")
+@click.option("--params", "-p", multiple=True, help="Parameters as key=value pairs")
+@click.option("--json-params", "-j", default=None, help="Parameters as JSON string")
+def test(tool_name: str, params: tuple, json_params: str | None) -> None:
+    """Test a specific tool/agent.
+
+    Examples:
+
+        odin test greet                    # Test with no params
+
+        odin test greet -p name=World      # Test with params
+
+        odin test add -p a=1 -p b=2        # Multiple params
+
+        odin test add -j '{"a": 1, "b": 2}'  # JSON params
+    """
+    project_root = find_project_root()
+
+    if not project_root:
+        click.echo(click.style("Error: Not in an Odin project directory", fg="red"))
+        raise SystemExit(1)
+
+    # Parse parameters
+    kwargs = {}
+    if json_params:
+        try:
+            kwargs = json.loads(json_params)
+        except json.JSONDecodeError as e:
+            click.echo(click.style(f"Error parsing JSON params: {e}", fg="red"))
+            raise SystemExit(1)
+
+    for param in params:
+        if "=" not in param:
+            click.echo(click.style(f"Invalid param format: {param} (use key=value)", fg="red"))
+            raise SystemExit(1)
+        key, value = param.split("=", 1)
+        # Try to parse as JSON for complex types
+        try:
+            kwargs[key] = json.loads(value)
+        except json.JSONDecodeError:
+            kwargs[key] = value
+
+    async def _test():
+        odin = get_odin_instance(project_root)
+        await odin.initialize()
+        return await odin.execute_tool(tool_name, **kwargs)
+
+    click.echo(f"Testing tool: {click.style(tool_name, fg='cyan', bold=True)}")
+    if kwargs:
+        click.echo(f"Parameters: {json.dumps(kwargs)}")
+    click.echo()
+
+    try:
+        result = asyncio.run(_test())
+        click.echo(click.style("Result:", fg="green"))
+        click.echo(json.dumps(result, indent=2, default=str))
+    except ValueError as e:
+        click.echo(click.style(f"Error: {e}", fg="red"))
+        raise SystemExit(1)
+    except Exception as e:
+        click.echo(click.style(f"Execution error: {e}", fg="red"))
+        raise SystemExit(1)
+
+
+@cli.command()
+@click.option("--interactive", "-i", is_flag=True, help="Interactive REPL mode")
+def repl(interactive: bool) -> None:
+    """Start an interactive REPL to test tools.
+
+    Examples:
+
+        odin repl              # Start REPL
+    """
+    project_root = find_project_root()
+
+    if not project_root:
+        click.echo(click.style("Error: Not in an Odin project directory", fg="red"))
+        raise SystemExit(1)
+
+    async def _repl():
+        odin = get_odin_instance(project_root)
+        await odin.initialize()
+
+        tools = odin.list_tools()
+        tool_names = [t["name"] for t in tools]
+
+        click.echo(click.style("Odin REPL - Interactive Tool Testing", fg="cyan", bold=True))
+        click.echo(f"Available tools: {', '.join(tool_names)}")
+        click.echo("Type 'help' for commands, 'exit' to quit")
+        click.echo()
+
+        while True:
+            try:
+                line = click.prompt(click.style("odin", fg="green"), prompt_suffix="> ")
+            except (EOFError, KeyboardInterrupt):
+                click.echo("\nGoodbye!")
+                break
+
+            line = line.strip()
+            if not line:
+                continue
+
+            if line in ("exit", "quit", "q"):
+                click.echo("Goodbye!")
+                break
+
+            if line == "help":
+                click.echo("Commands:")
+                click.echo("  list                  - List all tools")
+                click.echo("  <tool> [params]       - Execute tool (e.g., greet name=World)")
+                click.echo("  exit                  - Exit REPL")
+                continue
+
+            if line == "list":
+                for t in tools:
+                    click.echo(f"  {t['name']}: {t.get('description', '')}")
+                continue
+
+            # Parse tool call
+            parts = line.split()
+            tool_name = parts[0]
+            kwargs = {}
+
+            for part in parts[1:]:
+                if "=" in part:
+                    key, value = part.split("=", 1)
+                    try:
+                        kwargs[key] = json.loads(value)
+                    except json.JSONDecodeError:
+                        kwargs[key] = value
+
+            try:
+                result = await odin.execute_tool(tool_name, **kwargs)
+                click.echo(click.style("→ ", fg="green") + json.dumps(result, default=str))
+            except Exception as e:
+                click.echo(click.style(f"Error: {e}", fg="red"))
+
+    asyncio.run(_repl())
+
+
+@cli.command()
+@click.option("--host", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)")
+@click.option("--port", "-p", type=int, default=8000, help="Port to bind to (default: 8000)")
+@click.option("--config", "-c", type=click.Path(exists=True), help="Path to app.yaml config file")
+@click.option(
+    "--protocol",
+    type=click.Choice(["copilotkit", "http", "agui", "a2a"]),
+    default="copilotkit",
+    help="Protocol to expose (default: copilotkit)",
+)
+@click.option("--reload", is_flag=True, help="Enable auto-reload for development")
+@click.option("--standalone", is_flag=True, help="Force standalone mode (ignore project context)")
+def serve(
+    host: str,
+    port: int,
+    config: str | None,
+    protocol: Literal["copilotkit", "http", "agui", "a2a"],
+    reload: bool,
+    standalone: bool,
+) -> None:
+    """Start the Odin server.
+
+    Can run in two modes:
+
+    1. Standalone mode: Run Odin with built-in tools only
+       odin serve                     # Start with built-in tools
+
+    2. Project mode: Run from within a project directory
+       cd my-project && odin serve    # Load project tools + built-in tools
+
+    Examples:
+
+        odin serve                          # Default: port 8000, copilotkit protocol
+
+        odin serve --port 9000              # Custom port
+
+        odin serve --protocol http          # HTTP/REST mode
+
+        odin serve --config app.yaml        # Use config file
+
+        odin serve --standalone             # Force standalone mode
+    """
+    click.echo(click.style("Odin Server", fg="cyan", bold=True))
+    click.echo()
+
+    async def _serve():
+        from contextlib import asynccontextmanager
+
+        from fastapi import FastAPI
+        from fastapi.middleware.cors import CORSMiddleware
+        from pydantic import BaseModel
+
+        from odin import Odin
+        from odin.config import Settings
+
+        # Determine mode
+        project_root = None if standalone else find_project_root()
+        is_project_mode = project_root is not None
+
+        # Collect plugin directories
+        plugin_dirs: list[Path] = []
+
+        # Always include built-in tools
+        builtin_dir = get_builtin_tools_dir()
+        if builtin_dir.is_dir():
+            plugin_dirs.append(builtin_dir)
+
+        # Add project tools if in project mode
+        if is_project_mode:
+            import sys
+
+            agent_dir = project_root / "agent"
+            if agent_dir.is_dir():
+                sys.path.insert(0, str(agent_dir))
+                tools_dir = agent_dir / "tools"
+            else:
+                tools_dir = project_root / "tools"
+
+            if tools_dir.is_dir():
+                plugin_dirs.append(tools_dir)
+
+            click.echo(f"Mode: {click.style('Project', fg='green')}")
+            click.echo(f"Project: {project_root}")
+        else:
+            click.echo(f"Mode: {click.style('Standalone', fg='yellow')}")
+
+        click.echo(f"Tool directories: {[str(d) for d in plugin_dirs]}")
+        click.echo()
+
+        # Create settings
+        settings = Settings(
+            plugin_dirs=plugin_dirs,
+            plugin_auto_discovery=True,
+        )
+
+        # Initialize Odin
+        odin = Odin(settings=settings)
+        await odin.initialize()
+
+        tools = odin.list_tools()
+        click.echo(f"Loaded {click.style(str(len(tools)), fg='cyan')} tool(s)")
+        for tool in tools[:10]:  # Show first 10
+            click.echo(f"  - {tool['name']}")
+        if len(tools) > 10:
+            click.echo(f"  ... and {len(tools) - 10} more")
+        click.echo()
+
+        # Create FastAPI app
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            yield
+            await odin.shutdown()
+
+        app = FastAPI(
+            title="Odin Server",
+            description="AI Agent Server powered by Odin Framework",
+            version="0.1.0",
+            lifespan=lifespan,
+        )
+
+        # CORS
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        # Pydantic models for API documentation
+        class ToolCallRequest(BaseModel):
+            params: dict = {}
+
+        class ToolCallResponse(BaseModel):
+            result: dict | list | str | None
+            error: str | None = None
+
+        class ToolInfo(BaseModel):
+            name: str
+            description: str
+            parameters: dict
+
+        class HealthResponse(BaseModel):
+            status: str
+            mode: str
+            tools_count: int
+            protocol: str
+
+        # Health endpoint
+        @app.get("/health", response_model=HealthResponse, tags=["System"])
+        async def health():
+            """Health check endpoint."""
+            return {
+                "status": "healthy",
+                "mode": "project" if is_project_mode else "standalone",
+                "tools_count": len(tools),
+                "protocol": protocol,
+            }
+
+        # Tools endpoints
+        @app.get("/tools", response_model=list[ToolInfo], tags=["Tools"])
+        async def list_tools():
+            """List all available tools."""
+            return odin.list_tools()
+
+        @app.get("/tools/{tool_name}", response_model=ToolInfo, tags=["Tools"])
+        async def get_tool(tool_name: str):
+            """Get information about a specific tool."""
+            tools_list = odin.list_tools()
+            for t in tools_list:
+                if t["name"] == tool_name:
+                    return t
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+
+        @app.post("/tools/{tool_name}", response_model=ToolCallResponse, tags=["Tools"])
+        async def execute_tool(tool_name: str, request: ToolCallRequest):
+            """Execute a tool by name."""
+            try:
+                result = await odin.execute_tool(tool_name, **request.params)
+                return {"result": result, "error": None}
+            except Exception as e:
+                return {"result": None, "error": str(e)}
+
+        # Setup protocol endpoint
+        if protocol == "copilotkit":
+            from odin.protocols.copilotkit import CopilotKitAdapter
+
+            adapter = CopilotKitAdapter(odin)
+            adapter.mount(app, "/copilotkit")
+            click.echo(f"Protocol: CopilotKit at /copilotkit")
+        elif protocol == "http":
+            click.echo(f"Protocol: HTTP/REST at /tools")
+        elif protocol == "agui":
+            try:
+                from odin.protocols.agui import AGUIServer
+
+                agui = AGUIServer(odin, path="/agui")
+                app.mount("/agui", agui.app)
+                click.echo(f"Protocol: AG-UI at /agui")
+            except ImportError:
+                click.echo(click.style("AG-UI protocol not available", fg="yellow"))
+        elif protocol == "a2a":
+            try:
+                from odin.protocols.a2a import A2AServer
+
+                a2a = A2AServer(odin, name="Odin Server")
+                app.mount("/a2a", a2a.app)
+                click.echo(f"Protocol: A2A at /a2a")
+            except ImportError:
+                click.echo(click.style("A2A protocol not available", fg="yellow"))
+
+        click.echo()
+        click.echo(f"Server: http://{host}:{port}")
+        click.echo(f"API Docs: http://{host}:{port}/docs")
+        click.echo()
+        click.echo(click.style("Press Ctrl+C to stop", fg="yellow"))
+
+        # Run server
+        import uvicorn
+
+        uvi_config = uvicorn.Config(
+            app,
+            host=host,
+            port=port,
+            reload=reload,
+            log_level="info",
+        )
+        server = uvicorn.Server(uvi_config)
+        await server.serve()
+
+    try:
+        asyncio.run(_serve())
+    except KeyboardInterrupt:
+        click.echo("\nServer stopped.")
 
 
 @cli.command()
