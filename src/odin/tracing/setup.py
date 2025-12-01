@@ -75,28 +75,41 @@ def setup_tracing(
     trace.set_tracer_provider(_tracer_provider)
 
     # Setup metrics
+    metric_readers = []
+
     if exporter_type == "otlp":
         otlp_metric_exporter = OTLPMetricExporter(
             endpoint=settings.otel_exporter_otlp_endpoint,
             insecure=True,
         )
-        metric_reader = PeriodicExportingMetricReader(
-            otlp_metric_exporter,
-            export_interval_millis=60000,  # Export every 60s
+        metric_readers.append(
+            PeriodicExportingMetricReader(
+                otlp_metric_exporter,
+                export_interval_millis=60000,  # Export every 60s
+            )
         )
-    else:
+    elif settings.otel_console_metrics:
+        # Only enable console metrics if explicitly configured
         from opentelemetry.sdk.metrics.export import ConsoleMetricExporter
 
         console_metric_exporter = ConsoleMetricExporter()
-        metric_reader = PeriodicExportingMetricReader(
-            console_metric_exporter,
-            export_interval_millis=60000,
+        metric_readers.append(
+            PeriodicExportingMetricReader(
+                console_metric_exporter,
+                export_interval_millis=60000,
+            )
         )
+    # If neither OTLP nor console metrics enabled, don't pass metric_readers (uses default)
 
-    _meter_provider = MeterProvider(
-        resource=resource,
-        metric_readers=[metric_reader],
-    )
+    if metric_readers:
+        _meter_provider = MeterProvider(
+            resource=resource,
+            metric_readers=metric_readers,
+        )
+    else:
+        _meter_provider = MeterProvider(
+            resource=resource,
+        )
     metrics.set_meter_provider(_meter_provider)
 
     logger.info("OpenTelemetry setup complete")

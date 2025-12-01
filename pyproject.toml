@@ -91,9 +91,15 @@ postgres = [
     "asyncpg>=0.30.0",
 ]
 
+# NotebookLLM automation tools
+notebookllm = [
+    "playwright>=1.49.0",
+    "pdf2image>=1.17.0",
+]
+
 # All optional dependencies
 all = [
-    "odin[dev,profiling,protocols,postgres]",
+    "odin[dev,profiling,protocols,postgres,notebookllm]",
 ]
 
 [project.urls]

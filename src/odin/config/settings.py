@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     otel_enabled: bool = True
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     otel_service_name: str = "odin"
+    otel_console_metrics: bool = False  # Disable console metrics output by default
 
     # Storage settings
     redis_url: str = "redis://localhost:6379/0"
@@ -94,6 +95,10 @@ class Settings(BaseSettings):
     token_limit_per_request: int = 100000
     enable_semantic_cache: bool = True
     rate_limit_requests_per_minute: int = 60
+
+    # Browser automation settings (for NotebookLM, etc.)
+    browser_debug_url: str | None = Field(None, validation_alias="BROWSER_DEBUG_URL")
+    browser_download_dir: str | None = Field(None, validation_alias="BROWSER_DOWNLOAD_DIR")
 
     @field_validator("plugin_dirs", mode="before")
     @classmethod

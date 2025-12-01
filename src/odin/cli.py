@@ -362,24 +362,23 @@ def list_agents(as_json: bool, include_builtin: bool, show_all: bool) -> None:
 @click.argument("tool_name")
 @click.option("--params", "-p", multiple=True, help="Parameters as key=value pairs")
 @click.option("--json-params", "-j", default=None, help="Parameters as JSON string")
-def test(tool_name: str, params: tuple, json_params: str | None) -> None:
+@click.option("--builtin", is_flag=True, help="Test builtin tools (not project tools)")
+def test(tool_name: str, params: tuple, json_params: str | None, builtin: bool) -> None:
     """Test a specific tool/agent.
 
     Examples:
 
-        odin test greet                    # Test with no params
+        odin test greet -p name=World      # Test project tool
 
-        odin test greet -p name=World      # Test with params
-
-        odin test add -p a=1 -p b=2        # Multiple params
+        odin test --builtin pdf_to_images -p pdf_path=/path/to.pdf  # Test builtin tool
 
         odin test add -j '{"a": 1, "b": 2}'  # JSON params
     """
     project_root = find_project_root()
 
-    if not project_root:
-        click.echo(click.style("Error: Not in an Odin project directory", fg="red"))
-        raise SystemExit(1)
+    # If not in a project and not using --builtin, default to builtin
+    if not project_root and not builtin:
+        builtin = True
 
     # Parse parameters
     kwargs = {}
@@ -402,7 +401,36 @@ def test(tool_name: str, params: tuple, json_params: str | None) -> None:
             kwargs[key] = value
 
     async def _test():
-        odin = get_odin_instance(project_root)
+        from odin import Odin
+        from odin.config import Settings
+
+        plugin_dirs: list[Path] = []
+
+        # Add builtin tools if requested or not in project
+        if builtin or not project_root:
+            builtin_dir = get_builtin_tools_dir()
+            if builtin_dir.is_dir():
+                plugin_dirs.append(builtin_dir)
+
+        # Add project tools if in project and not builtin-only mode
+        if project_root and not builtin:
+            import sys
+
+            agent_dir = project_root / "agent"
+            if agent_dir.is_dir():
+                sys.path.insert(0, str(agent_dir))
+                tools_dir = agent_dir / "tools"
+            else:
+                tools_dir = project_root / "tools"
+
+            if tools_dir.is_dir():
+                plugin_dirs.append(tools_dir)
+
+        settings = Settings(
+            plugin_dirs=plugin_dirs,
+            plugin_auto_discovery=True,
+        )
+        odin = Odin(settings=settings)
         await odin.initialize()
         return await odin.execute_tool(tool_name, **kwargs)
 
