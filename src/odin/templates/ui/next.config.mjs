@@ -4,6 +4,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: '/api/copilotkit',
+        destination: 'http://localhost:8000/copilotkit',
+      },
+      {
         source: '/api/copilotkit/:path*',
         destination: 'http://localhost:8000/copilotkit/:path*',
       },
