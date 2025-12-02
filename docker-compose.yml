@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # Odin Agent Server - All protocols on single port
+  odin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # LLM Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      # Anthropic (optional)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      # Odin Configuration
+      - ODIN_ENV=${ODIN_ENV:-production}
+      - ODIN_LOG_LEVEL=${ODIN_LOG_LEVEL:-INFO}
+      - ODIN_LLM_PROVIDER=${ODIN_LLM_PROVIDER:-openai}
+      - ODIN_AGENT_BACKEND=${ODIN_AGENT_BACKEND:-langgraph}
+      # Builtin plugins to load
+      - ODIN_BUILTIN_PLUGINS=${ODIN_BUILTIN_PLUGINS:-http,utilities,google}
+      # Browser automation (connect to external Chrome)
+      - BROWSER_DEBUG_URL=${BROWSER_DEBUG_URL:-}
+    volumes:
+      # Persist data
+      - odin-data:/app/data
+      - odin-downloads:/app/downloads
+      # Custom plugins (optional)
+      - ./plugins:/app/plugins:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - odin-network
+
+  # Frontend UI (CopilotKit React)
+  ui:
+    build:
+      context: ./examples/demo/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_COPILOTKIT_URL=http://odin:8000/copilotkit
+    depends_on:
+      odin:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - odin-network
+
+  # Redis for checkpointing (optional)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - odin-network
+    profiles:
+      - with-redis
+
+  # Chrome for browser automation (optional)
+  chrome:
+    image: browserless/chrome:latest
+    ports:
+      - "9222:3000"
+    environment:
+      - CONNECTION_TIMEOUT=600000
+      - MAX_CONCURRENT_SESSIONS=10
+    restart: unless-stopped
+    networks:
+      - odin-network
+    profiles:
+      - with-browser
+
+volumes:
+  odin-data:
+  odin-downloads:
+  redis-data:
+
+networks:
+  odin-network:
+    name: odin-network

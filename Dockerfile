@@ -83,8 +83,6 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # Default Odin configuration
 ENV ODIN_ENV=production
 ENV ODIN_LOG_LEVEL=INFO
-ENV HTTP_HOST=0.0.0.0
-ENV HTTP_PORT=8000
 
 # Create directories for data persistence
 RUN mkdir -p /app/data /app/downloads /app/plugins && \
@@ -93,17 +91,19 @@ RUN mkdir -p /app/data /app/downloads /app/plugins && \
 # Switch to non-root user
 USER odin
 
-# Expose ports
-# HTTP/REST API
+# Expose single unified port
+# All protocols available via path routing:
+#   /a2a/*        - A2A protocol
+#   /mcp/*        - MCP Streamable HTTP
+#   /agui/*       - AG-UI protocol
+#   /copilotkit/* - CopilotKit protocol
+#   /api/*        - REST API
+#   /health       - Health check
 EXPOSE 8000
-# MCP Server
-EXPOSE 8001
-# A2A Protocol
-EXPOSE 8002
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${HTTP_PORT}/health || exit 1
+    CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command: start the Odin server with CopilotKit protocol
-CMD ["python", "-m", "odin", "serve", "--protocol", "copilotkit", "--host", "0.0.0.0", "--port", "8000"]
+# Default command: start the unified Odin server
+CMD ["python", "-m", "odin", "serve", "--unified", "--host", "0.0.0.0", "--port", "8000"]

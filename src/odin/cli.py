@@ -528,10 +528,15 @@ def repl(interactive: bool) -> None:  # noqa: ARG001
     "--protocol",
     type=click.Choice(["copilotkit", "http", "agui", "a2a"]),
     default="copilotkit",
-    help="Protocol to expose (default: copilotkit)",
+    help="Protocol to expose (default: copilotkit). Ignored if --unified is set.",
 )
 @click.option("--reload", is_flag=True, help="Enable auto-reload for development")
 @click.option("--standalone", is_flag=True, help="Force standalone mode (ignore project context)")
+@click.option(
+    "--unified",
+    is_flag=True,
+    help="Run unified server with all protocols on single port",
+)
 def serve(
     host: str,
     port: int,
@@ -539,24 +544,28 @@ def serve(
     protocol: Literal["copilotkit", "http", "agui", "a2a"],
     reload: bool,
     standalone: bool,
+    unified: bool,
 ) -> None:
     """Start the Odin server.
 
-    Can run in two modes:
+    Can run in three modes:
 
-    1. Standalone mode: Run Odin with built-in tools only
+    1. Unified mode (recommended): All protocols on single port
+       odin serve --unified           # All protocols at /a2a, /mcp, /agui, /copilotkit, /api
+
+    2. Standalone mode: Run Odin with built-in tools only
        odin serve                     # Start with built-in tools
 
-    2. Project mode: Run from within a project directory
+    3. Project mode: Run from within a project directory
        cd my-project && odin serve    # Load project tools + built-in tools
 
     Examples:
 
-        odin serve                          # Default: port 8000, copilotkit protocol
+        odin serve --unified                # All protocols on port 8000
 
-        odin serve --port 9000              # Custom port
+        odin serve --unified --port 9000    # All protocols on port 9000
 
-        odin serve --protocol http          # HTTP/REST mode
+        odin serve --protocol http          # HTTP/REST mode only
 
         odin serve --config app.yaml        # Use config file
 
@@ -565,7 +574,84 @@ def serve(
     click.echo(click.style("Odin Server", fg="cyan", bold=True))
     click.echo()
 
-    async def _serve():
+    async def _serve_unified():
+        """Run unified server with all protocols."""
+        from odin import Odin
+        from odin.config import Settings
+        from odin.plugins.builtin import BUILTIN_PLUGINS
+        from odin.server import UnifiedServer
+
+        # Determine mode
+        project_root = None if standalone else find_project_root()
+        is_project_mode = project_root is not None
+
+        # Collect plugin directories and builtin plugins
+        plugin_dirs: list[Path] = []
+        builtin_plugins_to_load = list(BUILTIN_PLUGINS.keys())
+
+        # Add project tools if in project mode
+        if is_project_mode:
+            import sys
+
+            agent_dir = project_root / "agent"
+            if agent_dir.is_dir():
+                sys.path.insert(0, str(agent_dir))
+                tools_dir = agent_dir / "tools"
+            else:
+                tools_dir = project_root / "tools"
+
+            if tools_dir.is_dir():
+                plugin_dirs.append(tools_dir)
+
+            click.echo(f"Mode: {click.style('Unified + Project', fg='green')}")
+            click.echo(f"Project: {project_root}")
+        else:
+            click.echo(f"Mode: {click.style('Unified + Standalone', fg='cyan')}")
+
+        click.echo(f"Builtin plugins: {builtin_plugins_to_load}")
+        if plugin_dirs:
+            click.echo(f"Plugin directories: {[str(d) for d in plugin_dirs]}")
+        click.echo()
+
+        # Create settings
+        settings = Settings(
+            plugin_dirs=plugin_dirs,
+            plugin_auto_discovery=bool(plugin_dirs),
+            builtin_plugins=builtin_plugins_to_load,
+        )
+
+        # Initialize Odin
+        odin_instance = Odin(settings=settings)
+        await odin_instance.initialize()
+
+        tools = odin_instance.list_tools()
+        click.echo(f"Loaded {click.style(str(len(tools)), fg='cyan')} tool(s)")
+        for tool in tools[:10]:  # Show first 10
+            click.echo(f"  - {tool['name']}")
+        if len(tools) > 10:
+            click.echo(f"  ... and {len(tools) - 10} more")
+        click.echo()
+
+        # Create and run unified server
+        server = UnifiedServer(odin_instance, name="Odin Unified Server")
+        server.create_app()
+
+        click.echo("Protocols:")
+        click.echo("  - A2A:        /a2a")
+        click.echo("  - MCP:        /mcp")
+        click.echo("  - AG-UI:      /agui")
+        click.echo("  - CopilotKit: /copilotkit")
+        click.echo("  - REST API:   /api")
+        click.echo()
+        click.echo(f"Server: http://{host}:{port}")
+        click.echo(f"API Docs: http://{host}:{port}/docs")
+        click.echo()
+        click.echo(click.style("Press Ctrl+C to stop", fg="yellow"))
+
+        await server.run(host=host, port=port)
+
+    async def _serve_single():
+        """Run server with single protocol."""
         from contextlib import asynccontextmanager
 
         from fastapi import FastAPI
@@ -616,10 +702,10 @@ def serve(
         )
 
         # Initialize Odin
-        odin = Odin(settings=settings)
-        await odin.initialize()
+        odin_instance = Odin(settings=settings)
+        await odin_instance.initialize()
 
-        tools = odin.list_tools()
+        tools = odin_instance.list_tools()
         click.echo(f"Loaded {click.style(str(len(tools)), fg='cyan')} tool(s)")
         for tool in tools[:10]:  # Show first 10
             click.echo(f"  - {tool['name']}")
@@ -631,7 +717,7 @@ def serve(
         @asynccontextmanager
         async def lifespan(app: FastAPI):  # noqa: ARG001
             yield
-            await odin.shutdown()
+            await odin_instance.shutdown()
 
         app = FastAPI(
             title="Odin Server",
@@ -681,14 +767,14 @@ def serve(
 
         # Tools endpoints
         @app.get("/tools", response_model=list[ToolInfo], tags=["Tools"])
-        async def list_tools():
+        async def list_tools_endpoint():
             """List all available tools."""
-            return odin.list_tools()
+            return odin_instance.list_tools()
 
         @app.get("/tools/{tool_name}", response_model=ToolInfo, tags=["Tools"])
         async def get_tool(tool_name: str):
             """Get information about a specific tool."""
-            tools_list = odin.list_tools()
+            tools_list = odin_instance.list_tools()
             for t in tools_list:
                 if t["name"] == tool_name:
                     return t
@@ -700,7 +786,7 @@ def serve(
         async def execute_tool(tool_name: str, request: ToolCallRequest):
             """Execute a tool by name."""
             try:
-                result = await odin.execute_tool(tool_name, **request.params)
+                result = await odin_instance.execute_tool(tool_name, **request.params)
                 return {"result": result, "error": None}
             except Exception as e:
                 return {"result": None, "error": str(e)}
@@ -709,7 +795,7 @@ def serve(
         if protocol == "copilotkit":
             from odin.protocols.copilotkit import CopilotKitAdapter
 
-            adapter = CopilotKitAdapter(odin)
+            adapter = CopilotKitAdapter(odin_instance)
             adapter.mount(app, "/copilotkit")
             click.echo("Protocol: CopilotKit at /copilotkit")
         elif protocol == "http":
@@ -718,7 +804,7 @@ def serve(
             try:
                 from odin.protocols.agui import AGUIServer
 
-                agui = AGUIServer(odin, path="/agui")
+                agui = AGUIServer(odin_instance, path="/agui")
                 app.mount("/agui", agui.app)
                 click.echo("Protocol: AG-UI at /agui")
             except ImportError:
@@ -727,7 +813,7 @@ def serve(
             try:
                 from odin.protocols.a2a import A2AServer
 
-                a2a = A2AServer(odin, name="Odin Server")
+                a2a = A2AServer(odin_instance, name="Odin Server")
                 app.mount("/a2a", a2a.app)
                 click.echo("Protocol: A2A at /a2a")
             except ImportError:
@@ -753,7 +839,10 @@ def serve(
         await server.serve()
 
     try:
-        asyncio.run(_serve())
+        if unified:
+            asyncio.run(_serve_unified())
+        else:
+            asyncio.run(_serve_single())
     except KeyboardInterrupt:
         click.echo("\nServer stopped.")
 
