@@ -105,14 +105,9 @@ builtin-plugins = [
 
 # PPT conversion tools (OCR + image processing)
 pptx-converter = [
-    "paddlepaddle>=3.0.0",
-    "paddleocr>=3.0.0",  # Use latest; odin.compat patches langchain compatibility
+    "easyocr>=1.7.0",  # OCR supporting Python 3.14+, 80+ languages including Chinese
     "python-pptx>=1.0.0",
     "opencv-python>=4.10.0",
-    "langchain-core>=0.2.0",  # Required for paddleocr 3.x compatibility shim
-    "langchain-text-splitters>=0.2.0",  # Required for paddleocr 3.x compatibility shim
-    # Optional: better inpainting with LaMa
-    # "lama-cleaner>=1.2.0",
 ]
 
 # All optional dependencies

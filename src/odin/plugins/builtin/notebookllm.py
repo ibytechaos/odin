@@ -1147,11 +1147,9 @@ class NotebookLLMPlugin(DecoratorPlugin):
         bbox: dict[str, int],
         lang: str = "ch",
     ) -> str:
-        """Extract text from a region using PaddleOCR."""
+        """Extract text from a region using EasyOCR."""
         try:
-            from odin.compat import patch_langchain_for_paddlex
-            patch_langchain_for_paddlex()
-            from paddleocr import PaddleOCR
+            import easyocr
         except ImportError:
             return ""
 
@@ -1168,22 +1166,22 @@ class NotebookLLMPlugin(DecoratorPlugin):
                 cropped.save(f.name)
                 temp_path = f.name
 
-            ocr = PaddleOCR(lang=lang)
-            result = ocr.ocr(temp_path)
+            # Map lang code to EasyOCR languages
+            langs = ["en"]
+            if lang == "ch":
+                langs = ["ch_sim", "en"]
+            elif lang == "cht":
+                langs = ["ch_tra", "en"]
+
+            reader = easyocr.Reader(langs, gpu=False)
+            result = reader.readtext(temp_path)
 
             Path(temp_path).unlink(missing_ok=True)
 
-            # PaddleOCR 3.x returns list of dicts with 'rec_texts' key
-            if result and isinstance(result, list) and len(result) > 0:
-                first_result = result[0]
-                # PaddleOCR 3.x format: dict with 'rec_texts'
-                if isinstance(first_result, dict) and "rec_texts" in first_result:
-                    texts = first_result.get("rec_texts", [])
-                    return " ".join(texts) if texts else ""
-                # PaddleOCR 2.x format: list of [box, (text, conf)]
-                if isinstance(first_result, (list, tuple)) and len(first_result) >= 2:
-                    texts = [line[1][0] for line in result[0] if line and len(line) >= 2]
-                    return " ".join(texts)
+            # EasyOCR returns list of (box, text, confidence)
+            if result:
+                texts = [item[1] for item in result if item and len(item) >= 2]
+                return " ".join(texts)
 
             return ""
         except Exception:

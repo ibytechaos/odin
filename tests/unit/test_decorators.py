@@ -154,7 +154,7 @@ class TestToolDecorator:
 
         # Should still be callable
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(callable_tool(5))
+        result = asyncio.run(callable_tool(5))
         assert result == {"doubled": 10}
 
     def test_tool_with_none_type(self):
