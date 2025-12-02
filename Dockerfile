@@ -14,23 +14,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast package management
+# Note: uv installs to /root/.local/bin by default now
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
+ENV PATH="/root/.local/bin:/root/.cargo/bin:$PATH"
 
 # Set working directory
 WORKDIR /app
 
-# Copy dependency files
-COPY pyproject.toml uv.lock ./
+# Copy dependency files and README (required by pyproject.toml)
+COPY pyproject.toml uv.lock README.md ./
 
-# Install dependencies (with builtin-plugins extras for browser automation)
-RUN uv sync --frozen --no-dev --extra builtin-plugins
-
-# Copy source code
+# Copy source code first (needed for package installation)
 COPY src/ ./src/
 
-# Install the package
-RUN uv pip install --no-deps -e .
+# Install dependencies and the package
+# Using explicit path in case ENV doesn't take effect in same layer
+RUN /root/.local/bin/uv sync --frozen --no-dev --extra builtin-plugins
 
 # Note: Playwright browsers are NOT installed in the container
 # We use remote Chrome debugging via CHROME_DEBUG_HOST instead

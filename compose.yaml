@@ -28,6 +28,9 @@ services:
     volumes:
       # Code hot-reload (development mode)
       - .:/app
+      # Preserve the virtual environment from the container
+      # This prevents the host's empty .venv from overwriting the container's installed dependencies
+      - odin-venv:/app/.venv
       # Obsidian vault mount
       - ${HOME}/Documents/Obsidian/Odin:/obsidian
       # Downloads directory
@@ -40,7 +43,7 @@ services:
     labels:
       - "traefik.enable=true"
       # Backend API
-      - "traefik.http.routers.odin.rule=Host(`odin.mcp.ibytechaos.com`)"
+      - "traefik.http.routers.odin.rule=Host(`odin.api.ibytechaos.com`)"
       - "traefik.http.routers.odin.entrypoints=websecure"
       - "traefik.http.routers.odin.tls.certresolver=letsencrypt"
       - "traefik.http.routers.odin.middlewares=secure-headers@file"
@@ -72,7 +75,7 @@ services:
     labels:
       - "traefik.enable=true"
       # UI Frontend
-      - "traefik.http.routers.odin-ui.rule=Host(`chat.odin.mcp.ibytechaos.com`)"
+      - "traefik.http.routers.odin-ui.rule=Host(`odin.ibytechaos.com`)"
       - "traefik.http.routers.odin-ui.entrypoints=websecure"
       - "traefik.http.routers.odin-ui.tls.certresolver=letsencrypt"
       - "traefik.http.routers.odin-ui.middlewares=secure-headers@file"
@@ -89,3 +92,8 @@ networks:
     external: true
   proxy:
     external: true
+
+volumes:
+  # Named volume to preserve container's virtual environment
+  # when mounting local code for development
+  odin-venv:
