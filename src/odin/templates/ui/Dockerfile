@@ -1,13 +1,12 @@
-FROM node:20-alpine AS base
+FROM oven/bun:1 AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Install dependencies
-COPY package.json package-lock.json* ./
-RUN npm ci
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -16,10 +15,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN bun run build
 
-# Production image
-FROM base AS runner
+# Production image - use Node for running Next.js standalone
+FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
