@@ -1,13 +1,16 @@
 # Odin Framework Docker Compose Configuration
 #
 # Usage:
-#   docker-compose up -d
+#   docker-compose up -d              # Start all services
+#   docker-compose up -d odin         # Start backend only
+#   docker-compose up -d odin ui      # Start backend + UI
 #
 # Prerequisites:
 #   - External 'services' network with Redis and PostgreSQL
 #   - External 'proxy' network with Traefik (optional)
 
 services:
+  # Odin Backend - Unified server with all protocols
   odin:
     build:
       context: .
@@ -36,6 +39,7 @@ services:
       - proxy
     labels:
       - "traefik.enable=true"
+      # Backend API
       - "traefik.http.routers.odin.rule=Host(`odin.mcp.ibytechaos.com`)"
       - "traefik.http.routers.odin.entrypoints=websecure"
       - "traefik.http.routers.odin.tls.certresolver=letsencrypt"
@@ -47,6 +51,38 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  # Odin UI - Next.js CopilotKit Frontend
+  ui:
+    build:
+      context: ./examples/demo/frontend
+      dockerfile: Dockerfile
+    container_name: odin-ui
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      # Connect to backend via internal network
+      - NEXT_PUBLIC_COPILOTKIT_URL=http://odin:8000/copilotkit
+    depends_on:
+      odin:
+        condition: service_healthy
+    networks:
+      - services
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      # UI Frontend
+      - "traefik.http.routers.odin-ui.rule=Host(`chat.odin.mcp.ibytechaos.com`)"
+      - "traefik.http.routers.odin-ui.entrypoints=websecure"
+      - "traefik.http.routers.odin-ui.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.odin-ui.middlewares=secure-headers@file"
+      - "traefik.http.services.odin-ui.loadbalancer.server.port=3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 networks:
   services:
