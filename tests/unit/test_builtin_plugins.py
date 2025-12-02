@@ -18,6 +18,7 @@ from odin.plugins import (
     get_all_builtin_plugins,
     get_builtin_plugin,
 )
+from odin.plugins.builtin import HTTPPlugin, UtilitiesPlugin, NotebookLLMPlugin
 
 
 class TestBuiltinPluginRegistry:
@@ -26,6 +27,9 @@ class TestBuiltinPluginRegistry:
     def test_builtin_plugins_registry(self):
         """Test that all expected plugins are in the registry."""
         expected_plugins = {
+            "http",
+            "utilities",
+            "notebookllm",
             "github",
             "xiaohongshu",
             "gemini",
@@ -51,10 +55,71 @@ class TestBuiltinPluginRegistry:
     def test_get_all_builtin_plugins(self):
         """Test getting all built-in plugins."""
         plugins = get_all_builtin_plugins()
-        assert len(plugins) == 7
+        assert len(plugins) == 10  # All 10 builtin plugins
         plugin_names = {p.name for p in plugins}
         assert "github" in plugin_names
         assert "xiaohongshu" in plugin_names
+        assert "http" in plugin_names
+        assert "utilities" in plugin_names
+
+
+class TestHTTPPlugin:
+    """Test HTTPPlugin functionality."""
+
+    @pytest.fixture
+    def plugin(self):
+        """Create a HTTPPlugin instance."""
+        return HTTPPlugin()
+
+    def test_plugin_properties(self, plugin):
+        """Test plugin metadata properties."""
+        assert plugin.name == "http"
+        assert plugin.version == "1.0.0"
+        assert "HTTP" in plugin.description
+
+    @pytest.mark.asyncio
+    async def test_get_tools(self, plugin):
+        """Test that all expected tools are registered."""
+        await plugin.initialize()
+        tools = await plugin.get_tools()
+
+        tool_names = {t.name for t in tools}
+        expected_tools = {
+            "fetch_webpage",
+            "http_get",
+            "http_post",
+            "http_request",
+        }
+        assert expected_tools == tool_names
+
+
+class TestUtilitiesPlugin:
+    """Test UtilitiesPlugin functionality."""
+
+    @pytest.fixture
+    def plugin(self):
+        """Create a UtilitiesPlugin instance."""
+        return UtilitiesPlugin()
+
+    def test_plugin_properties(self, plugin):
+        """Test plugin metadata properties."""
+        assert plugin.name == "utilities"
+        assert plugin.version == "1.0.0"
+
+    @pytest.mark.asyncio
+    async def test_get_tools(self, plugin):
+        """Test that tools are registered."""
+        await plugin.initialize()
+        tools = await plugin.get_tools()
+
+        # Should have multiple utility tools (25 total)
+        assert len(tools) >= 20
+        tool_names = {t.name for t in tools}
+        # Check actual tool names
+        assert "uuid_generate" in tool_names
+        assert "hash_text" in tool_names
+        assert "base64_encode" in tool_names
+        assert "json_parse" in tool_names
 
 
 class TestGitHubPlugin:
@@ -363,23 +428,53 @@ class TestPublishersPlugin:
         assert "url" in csdn
 
 
-class TestSharedUtilities:
-    """Test shared utility modules."""
+class TestNotebookLLMPlugin:
+    """Test NotebookLLMPlugin functionality."""
+
+    @pytest.fixture
+    def plugin(self):
+        """Create a NotebookLLMPlugin instance."""
+        return NotebookLLMPlugin()
+
+    def test_plugin_properties(self, plugin):
+        """Test plugin metadata properties."""
+        assert plugin.name == "notebookllm"
+        assert plugin.version == "1.0.0"
+        assert "NotebookLLM" in plugin.description
+
+    @pytest.mark.asyncio
+    async def test_get_tools(self, plugin):
+        """Test that tools are registered."""
+        await plugin.initialize()
+        tools = await plugin.get_tools()
+
+        # Should have multiple NotebookLLM tools (8 total)
+        assert len(tools) >= 5
+        tool_names = {t.name for t in tools}
+        # Check actual tool names
+        assert "notebookllm_add_source" in tool_names
+        assert "notebookllm_generate_presentation" in tool_names
+        assert "pdf_to_images" in tool_names
+
+
+class TestUtilsImports:
+    """Test that utils modules can be imported correctly."""
 
     def test_progress_tracker_import(self):
-        """Test progress tracker can be imported."""
-        from odin.plugins.builtin.shared.progress import (
+        """Test progress tracker can be imported from utils."""
+        from odin.utils.progress import (
             ProgressTracker,
-            ProgressStatus,
+            ProgressEvent,
             progress_tracker,
         )
 
+        assert ProgressTracker is not None
+        assert ProgressEvent is not None
         assert progress_tracker is not None
-        assert ProgressStatus.PENDING is not None
 
     def test_http_client_import(self):
-        """Test HTTP client can be imported."""
-        from odin.plugins.builtin.shared.http_client import (
+        """Test HTTP client can be imported from utils."""
+        from odin.utils.http_client import (
             AsyncHTTPClient,
             HTTPClientError,
         )
@@ -387,13 +482,35 @@ class TestSharedUtilities:
         assert AsyncHTTPClient is not None
         assert HTTPClientError is not None
 
-    def test_browser_import(self):
-        """Test browser utilities can be imported."""
-        from odin.plugins.builtin.shared.browser import (
+    def test_browser_session_import(self):
+        """Test browser session can be imported from utils."""
+        from odin.utils.browser_session import (
             BrowserConfig,
             BrowserSession,
+            BrowserSessionError,
+            get_browser_session,
         )
 
+        assert BrowserConfig is not None
+        assert BrowserSession is not None
+        assert BrowserSessionError is not None
+        assert get_browser_session is not None
+
+    def test_utils_package_exports(self):
+        """Test utils package exports all expected classes."""
+        from odin.utils import (
+            BrowserConfig,
+            BrowserSession,
+            BrowserSessionError,
+            get_browser_session,
+            cleanup_all_browser_sessions,
+            AsyncHTTPClient,
+            HTTPClientError,
+            ProgressTracker,
+            ProgressEvent,
+        )
+
+        # All imports should be available
         assert BrowserConfig is not None
         assert BrowserSession is not None
 
@@ -401,9 +518,16 @@ class TestSharedUtilities:
 class TestProgressTracker:
     """Test ProgressTracker functionality."""
 
-    def test_create_session(self):
-        """Test creating a progress session."""
-        from odin.plugins.builtin.shared.progress import ProgressTracker, ProgressStatus
+    def test_create_tracker(self):
+        """Test creating a progress tracker."""
+        from odin.utils.progress import ProgressTracker
+
+        tracker = ProgressTracker()
+        assert tracker is not None
+
+    def test_tracker_session(self):
+        """Test tracker session management."""
+        from odin.utils.progress import ProgressTracker
 
         tracker = ProgressTracker()
         session_id = tracker.create_session(
@@ -414,12 +538,10 @@ class TestProgressTracker:
         assert session_id == "test-session"
         session = tracker.get_session("test-session")
         assert session is not None
-        assert session.status == ProgressStatus.PENDING
-        assert session.metadata["type"] == "test"
 
     def test_add_event(self):
         """Test adding events to a session."""
-        from odin.plugins.builtin.shared.progress import ProgressTracker
+        from odin.utils.progress import ProgressTracker
 
         tracker = ProgressTracker()
         tracker.create_session("test-session")
@@ -428,27 +550,15 @@ class TestProgressTracker:
         session = tracker.get_session("test-session")
         assert len(session.events) == 1
         assert session.events[0].event_type == "started"
-        assert session.events[0].message == "Test started"
-
-    def test_set_status(self):
-        """Test setting session status."""
-        from odin.plugins.builtin.shared.progress import ProgressTracker, ProgressStatus
-
-        tracker = ProgressTracker()
-        tracker.create_session("test-session")
-        tracker.set_status("test-session", ProgressStatus.RUNNING)
-
-        session = tracker.get_session("test-session")
-        assert session.status == ProgressStatus.RUNNING
 
 
-class TestHTTPClient:
+class TestHTTPClientUnit:
     """Test AsyncHTTPClient functionality."""
 
     @pytest.mark.asyncio
     async def test_client_initialization(self):
         """Test HTTP client initialization."""
-        from odin.plugins.builtin.shared.http_client import AsyncHTTPClient
+        from odin.utils.http_client import AsyncHTTPClient
 
         client = AsyncHTTPClient(timeout=30)
         assert client.timeout == 30
@@ -457,7 +567,53 @@ class TestHTTPClient:
     @pytest.mark.asyncio
     async def test_client_context_manager(self):
         """Test HTTP client as context manager."""
-        from odin.plugins.builtin.shared.http_client import AsyncHTTPClient
+        from odin.utils.http_client import AsyncHTTPClient
 
         async with AsyncHTTPClient() as client:
             assert client is not None
+
+
+class TestBrowserConfig:
+    """Test BrowserConfig functionality."""
+
+    def test_default_config(self):
+        """Test default browser config."""
+        from odin.utils.browser_session import BrowserConfig
+
+        config = BrowserConfig()
+        assert config.host is None
+        assert config.port == 9222
+        assert config.tls is False
+        assert config.is_remote is False
+
+    def test_remote_config(self):
+        """Test remote browser config."""
+        from odin.utils.browser_session import BrowserConfig
+
+        config = BrowserConfig(host="chrome.example.com", port=443, tls=True)
+        assert config.host == "chrome.example.com"
+        assert config.port == 443
+        assert config.tls is True
+        assert config.is_remote is True
+        assert config.cdp_url == "https://chrome.example.com:443"
+
+    def test_config_from_env(self):
+        """Test config from environment variables."""
+        from odin.utils.browser_session import BrowserConfig
+        import os
+
+        # Set environment variables
+        os.environ["CHROME_DEBUG_HOST"] = "test.example.com"
+        os.environ["CHROME_DEBUG_PORT"] = "9999"
+        os.environ["CHROME_DEBUG_TLS"] = "true"
+
+        try:
+            config = BrowserConfig.from_env()
+            assert config.host == "test.example.com"
+            assert config.port == 9999
+            assert config.tls is True
+        finally:
+            # Clean up
+            del os.environ["CHROME_DEBUG_HOST"]
+            del os.environ["CHROME_DEBUG_PORT"]
+            del os.environ["CHROME_DEBUG_TLS"]

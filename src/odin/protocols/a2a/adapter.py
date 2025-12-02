@@ -16,7 +16,7 @@ from odin.logging import get_logger
 from odin.protocols.a2a.models import (
     A2AError,
     AgentCard,
-    AgentCardSkill,
+    AgentSkill,
     GetTaskResponse,
     ListTasksResponse,
     Message,
@@ -81,22 +81,20 @@ class A2AAdapter(IProtocolAdapter):
 
         self._setup_routes()
 
-    def convert_tools(self) -> list[AgentCardSkill]:
+    def convert_tools(self) -> list[AgentSkill]:
         """Convert Odin tools to A2A skills format.
 
         Returns:
-            List of AgentCardSkill objects
+            List of AgentSkill objects
         """
         metadata = self.agent.get_metadata()
         tool_names = metadata.get("tools", [])
 
         skills = []
         for tool_name in tool_names:
-            skill = AgentCardSkill(
+            skill = AgentSkill(
                 name=tool_name,
                 description=f"Tool: {tool_name}",
-                inputSchema={"type": "object", "properties": {}},
-                outputSchema={"type": "object"},
             )
             skills.append(skill)
 
