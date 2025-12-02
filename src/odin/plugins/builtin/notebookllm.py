@@ -27,7 +27,6 @@ Tools:
 - notebookllm_close_browser: Close browser connection
 """
 
-from __future__ import annotations
 
 import asyncio
 import base64

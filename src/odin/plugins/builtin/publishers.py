@@ -19,7 +19,6 @@ Supported platforms:
 - Alibaba Cloud (阿里云开发者社区)
 """
 
-from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass

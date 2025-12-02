@@ -3,7 +3,6 @@
 This module provides Prometheus-compatible metrics endpoint.
 """
 
-from __future__ import annotations
 
 from typing import TYPE_CHECKING
 

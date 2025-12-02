@@ -4,7 +4,6 @@ This adapter implements the IProtocolAdapter interface for AG-UI
 (Agent-User Interaction Protocol), enabling protocol-agnostic development.
 """
 
-from __future__ import annotations
 
 import asyncio
 import json

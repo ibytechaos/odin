@@ -10,7 +10,6 @@ Tools:
 - fetch_webpage: Fetch and extract webpage content
 """
 
-from __future__ import annotations
 
 import json
 import re

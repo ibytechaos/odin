@@ -7,7 +7,6 @@ Tools:
 - obsidian_save_file: Save markdown content to an Obsidian vault
 """
 
-from __future__ import annotations
 
 import os
 import re

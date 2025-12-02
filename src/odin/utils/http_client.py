@@ -4,7 +4,6 @@ This module provides async HTTP client functionality with
 connection pooling, retry logic, and error handling.
 """
 
-from __future__ import annotations
 
 import asyncio
 import contextlib

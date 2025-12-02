@@ -7,7 +7,6 @@ Tools:
 - google_image_search: Search for images using Google Custom Search API
 """
 
-from __future__ import annotations
 
 import asyncio
 import os

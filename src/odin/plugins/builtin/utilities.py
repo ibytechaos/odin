@@ -15,7 +15,6 @@ Tools:
 - List operations: list_sort, list_filter, list_unique
 """
 
-from __future__ import annotations
 
 import hashlib
 import json

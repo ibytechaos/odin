@@ -13,7 +13,6 @@ Tools are organized into categories:
 - Progress & Stats: Track operation progress, view statistics
 """
 
-from __future__ import annotations
 
 import asyncio
 import base64

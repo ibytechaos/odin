@@ -13,7 +13,6 @@ Tools:
 - trending_get_statistics: Get topic statistics
 """
 
-from __future__ import annotations
 
 import asyncio
 import hashlib

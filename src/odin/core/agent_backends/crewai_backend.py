@@ -3,7 +3,6 @@
 This is the default agent backend for Odin, using CrewAI for multi-agent orchestration.
 """
 
-from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING, Any

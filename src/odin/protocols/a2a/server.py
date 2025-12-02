@@ -1,5 +1,4 @@
 """A2A Server implementation for Odin framework."""
-from __future__ import annotations
 
 import asyncio
 import json

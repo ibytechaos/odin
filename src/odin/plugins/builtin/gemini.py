@@ -7,7 +7,6 @@ Tools:
 - gemini_deep_research: Automate Gemini deep research feature
 """
 
-from __future__ import annotations
 
 import asyncio
 from datetime import datetime
