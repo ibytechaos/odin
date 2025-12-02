@@ -87,3 +87,4 @@ node_modules
 debug*
 .swarm
 .claude-flow
+.ruff_cache
