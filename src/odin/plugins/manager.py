@@ -1,5 +1,7 @@
 """Plugin manager for loading, registering, and managing plugins."""
 
+from __future__ import annotations
+
 import importlib
 import importlib.util
 import sys

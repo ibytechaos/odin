@@ -4,6 +4,8 @@ This new adapter supports multiple agent backends (CrewAI, LangGraph) through
 the unified IAgent interface.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 from odin.logging import get_logger

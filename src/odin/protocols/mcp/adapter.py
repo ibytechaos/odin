@@ -4,6 +4,8 @@ This adapter implements the IProtocolAdapter interface for MCP (Model Context Pr
 enabling protocol-agnostic development.
 """
 
+from __future__ import annotations
+
 import json
 from typing import TYPE_CHECKING, Any
 

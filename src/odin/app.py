@@ -39,6 +39,8 @@ Example app.yaml:
     ```
 """
 
+from __future__ import annotations
+
 import asyncio
 import importlib
 from contextlib import asynccontextmanager

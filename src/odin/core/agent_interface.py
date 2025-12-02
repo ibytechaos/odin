@@ -4,6 +4,8 @@ This module defines the unified Agent interface that all agent backends
 (CrewAI, LangGraph, custom) must implement.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 

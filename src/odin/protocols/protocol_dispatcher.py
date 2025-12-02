@@ -1,4 +1,5 @@
 """Protocol dispatcher for automatic protocol detection and routing."""
+from __future__ import annotations
 
 from enum import Enum
 from typing import TYPE_CHECKING, Any

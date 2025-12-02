@@ -14,6 +14,8 @@ We work around this by creating OdinLangGraphAgent that:
 - Also adds dict_repr() and get_state() methods for SDK compatibility
 """
 
+from __future__ import annotations
+
 import uuid
 from typing import TYPE_CHECKING, Annotated, Any
 

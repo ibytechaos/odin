@@ -1,5 +1,7 @@
 """OpenTelemetry setup and configuration."""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Literal
 
 from opentelemetry import metrics, trace

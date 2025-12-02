@@ -4,6 +4,8 @@ This adapter implements the IProtocolAdapter interface for HTTP/REST protocol,
 enabling protocol-agnostic development.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException, Request, Response

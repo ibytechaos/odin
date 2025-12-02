@@ -1,4 +1,5 @@
 """Agent Card generation for A2A protocol."""
+from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
