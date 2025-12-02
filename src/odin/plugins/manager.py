@@ -4,13 +4,15 @@ import importlib
 import importlib.util
 import sys
 import time
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from odin.errors import ErrorCode, ExecutionError, PluginError
 from odin.logging import get_logger
 from odin.plugins.base import AgentPlugin, DecoratorPlugin, Tool
-from odin.tracing import get_metrics_collector, traced
+from odin.tracing import get_metrics_collector
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = get_logger(__name__)
 metrics = get_metrics_collector()
@@ -233,7 +235,7 @@ class PluginManager:
                 details={"tool": tool_name},
             )
 
-        plugin_name, tool = self._tools[tool_name]
+        plugin_name, _tool = self._tools[tool_name]
         plugin = self._plugins[plugin_name]
 
         logger.info(

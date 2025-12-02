@@ -1,8 +1,10 @@
 """AG-UI Event Encoder for SSE streaming."""
 
 import json
+from typing import TYPE_CHECKING
 
-from odin.protocols.agui.models import AGUIEvent
+if TYPE_CHECKING:
+    from odin.protocols.agui.models import AGUIEvent
 
 
 class EventEncoder:

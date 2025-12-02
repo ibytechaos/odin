@@ -1,12 +1,14 @@
 """Main Odin framework class."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from odin.config import Settings, get_settings
 from odin.logging import get_logger, setup_logging
-from odin.plugins import AgentPlugin
 from odin.plugins.manager import PluginManager
 from odin.tracing import setup_tracing, shutdown_tracing
+
+if TYPE_CHECKING:
+    from odin.plugins import AgentPlugin
 
 logger = get_logger(__name__)
 

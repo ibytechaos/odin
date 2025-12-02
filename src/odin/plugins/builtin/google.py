@@ -17,7 +17,7 @@ from pydantic import Field
 
 from odin.decorators import tool
 from odin.plugins import DecoratorPlugin, PluginConfig
-from odin.utils.http_client import AsyncHTTPClient, HTTPClientError
+from odin.utils.http_client import AsyncHTTPClient
 
 
 class GooglePlugin(DecoratorPlugin):
@@ -178,9 +178,8 @@ class GooglePlugin(DecoratorPlugin):
                             byte_size = image_info.get("byteSize", 0)
 
                             # Quality filters
-                            if width > 0 and height > 0:
-                                if width < 300 or height < 300:
-                                    continue
+                            if width > 0 and height > 0 and (width < 300 or height < 300):
+                                continue
                             if 0 < byte_size < 10240:  # Skip < 10KB
                                 continue
 
@@ -199,7 +198,7 @@ class GooglePlugin(DecoratorPlugin):
 
                         return query, images
 
-                    except Exception as e:
+                    except Exception:
                         return query, []
 
             # Execute all searches

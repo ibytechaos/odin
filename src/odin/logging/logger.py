@@ -2,18 +2,22 @@
 
 import logging
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
-from structlog.typing import EventDict, Processor
+
+if TYPE_CHECKING:
+    from structlog.typing import EventDict, Processor
 
 
-def add_trace_id(logger: Any, method_name: str, event_dict: EventDict) -> EventDict:
+def add_trace_id(
+    _logger: Any, _method_name: str, event_dict: EventDict
+) -> EventDict:
     """Add trace ID to log records if available.
 
     Args:
-        logger: Logger instance
-        method_name: Method name being called
+        _logger: Logger instance (unused, required by structlog API)
+        _method_name: Method name being called (unused, required by structlog API)
         event_dict: Event dictionary
 
     Returns:

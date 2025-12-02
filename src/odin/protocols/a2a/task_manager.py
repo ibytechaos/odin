@@ -8,7 +8,6 @@ from typing import Any
 from odin.logging import get_logger
 from odin.protocols.a2a.models import (
     Message,
-    MessageRole,
     Task,
     TaskArtifact,
     TaskState,

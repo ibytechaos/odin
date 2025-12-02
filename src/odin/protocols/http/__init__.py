@@ -3,4 +3,4 @@
 from odin.protocols.http.adapter import HTTPAdapter
 from odin.protocols.http.server import HTTPServer
 
-__all__ = ["HTTPServer", "HTTPAdapter"]
+__all__ = ["HTTPAdapter", "HTTPServer"]

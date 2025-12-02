@@ -4,11 +4,12 @@ All protocol adapters (MCP, A2A, AG-UI, CopilotKit, HTTP) must implement this in
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from odin.core.agent_interface import IAgent
 from odin.logging import get_logger
-from odin.plugins.base import Tool
+
+if TYPE_CHECKING:
+    from odin.core.agent_interface import IAgent
 
 logger = get_logger(__name__)
 

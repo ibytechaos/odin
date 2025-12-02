@@ -7,7 +7,6 @@ from odin.plugins.base import (
     Tool,
     ToolParameter,
 )
-from odin.plugins.manager import PluginManager
 
 # Built-in plugins
 from odin.plugins.builtin import (
@@ -22,25 +21,26 @@ from odin.plugins.builtin import (
     get_all_builtin_plugins,
     get_builtin_plugin,
 )
+from odin.plugins.manager import PluginManager
 
 __all__ = [
-    # Base classes
-    "AgentPlugin",
-    "DecoratorPlugin",
-    "PluginConfig",
-    "Tool",
-    "ToolParameter",
-    "PluginManager",
-    # Built-in plugins
-    "GitHubPlugin",
-    "XiaohongshuPlugin",
-    "GeminiPlugin",
-    "GooglePlugin",
-    "TrendingPlugin",
-    "ContentPlugin",
-    "PublishersPlugin",
     # Plugin utilities
     "BUILTIN_PLUGINS",
+    # Base classes
+    "AgentPlugin",
+    "ContentPlugin",
+    "DecoratorPlugin",
+    "GeminiPlugin",
+    # Built-in plugins
+    "GitHubPlugin",
+    "GooglePlugin",
+    "PluginConfig",
+    "PluginManager",
+    "PublishersPlugin",
+    "Tool",
+    "ToolParameter",
+    "TrendingPlugin",
+    "XiaohongshuPlugin",
     "get_all_builtin_plugins",
     "get_builtin_plugin",
 ]

@@ -1,14 +1,16 @@
 """MCP Server implementation for Odin framework."""
 
-import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool as MCPTool, TextContent
+from mcp.types import TextContent
+from mcp.types import Tool as MCPTool
 
-from odin.core.odin import Odin
 from odin.logging import get_logger
+
+if TYPE_CHECKING:
+    from odin.core.odin import Odin
 
 logger = get_logger(__name__)
 
@@ -115,7 +117,7 @@ class MCPServer:
                 logger.error("MCP: Tool execution failed", tool=name, error=str(e))
 
                 # Return error as text content
-                error_text = f"Error executing tool '{name}': {str(e)}"
+                error_text = f"Error executing tool '{name}': {e!s}"
                 return [
                     TextContent(
                         type="text",

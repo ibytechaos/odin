@@ -139,7 +139,7 @@ class AppConfig(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "AppConfig":
+    def from_yaml(cls, path: str | Path) -> AppConfig:
         """Load configuration from YAML file.
 
         Args:
@@ -152,7 +152,7 @@ class AppConfig(BaseModel):
         if not path.exists():
             raise FileNotFoundError(f"Config file not found: {path}")
 
-        with open(path) as f:
+        with path.open() as f:
             data = yaml.safe_load(f)
 
         return cls(**data)
@@ -166,7 +166,7 @@ class AppConfig(BaseModel):
         path = Path(path)
         data = self.model_dump(exclude_none=True)
 
-        with open(path, "w") as f:
+        with path.open("w") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
     def get_enabled_protocols(self) -> list[ProtocolConfig]:

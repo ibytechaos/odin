@@ -8,10 +8,10 @@ Supports:
 - CopilotKit - CopilotKit integration
 """
 
-from odin.protocols.mcp import MCPServer
 from odin.protocols.http import HTTPServer
+from odin.protocols.mcp import MCPServer
 
 __all__ = [
-    "MCPServer",
     "HTTPServer",
+    "MCPServer",
 ]

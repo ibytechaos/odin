@@ -92,11 +92,11 @@ class AgentFactory:
         """
         try:
             from odin.core.agent_backends.crewai_backend import CrewAIAgentBackend
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "CrewAI is required for crewai backend. "
                 "Install with: pip install crewai"
-            )
+            ) from e
 
         # Create LLM
         llm = create_llm(settings)

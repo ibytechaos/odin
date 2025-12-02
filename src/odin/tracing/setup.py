@@ -1,6 +1,6 @@
 """OpenTelemetry setup and configuration."""
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -11,8 +11,10 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from odin.config import Settings
 from odin.logging import get_logger
+
+if TYPE_CHECKING:
+    from odin.config import Settings
 
 logger = get_logger(__name__)
 

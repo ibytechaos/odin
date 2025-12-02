@@ -1,12 +1,14 @@
 """HTTP/REST Server implementation for Odin framework."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from odin.core.odin import Odin
 from odin.logging import get_logger
+
+if TYPE_CHECKING:
+    from odin.core.odin import Odin
 
 logger = get_logger(__name__)
 
@@ -194,8 +196,8 @@ class HTTPServer:
                 )
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Invalid parameters for tool '{request.tool_name}': {str(e)}",
-                )
+                    detail=f"Invalid parameters for tool '{request.tool_name}': {e!s}",
+                ) from e
 
             except Exception as e:
                 # Tool execution error
@@ -209,11 +211,13 @@ class HTTPServer:
                 )
 
         @self.app.post("/execute/{tool_name}", response_model=ToolExecutionResponse)
-        async def execute_tool_by_path(tool_name: str, parameters: dict[str, Any] = {}):
+        async def execute_tool_by_path(tool_name: str, parameters: dict[str, Any] | None = None):
             """Execute a tool by path parameter.
 
             Alternative endpoint that takes tool name in URL path.
             """
+            if parameters is None:
+                parameters = {}
             request = ToolExecutionRequest(tool_name=tool_name, parameters=parameters)
             return await execute_tool(request)
 

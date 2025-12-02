@@ -8,7 +8,6 @@ deep research, etc.
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum

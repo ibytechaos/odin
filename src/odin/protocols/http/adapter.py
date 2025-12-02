@@ -4,14 +4,16 @@ This adapter implements the IProtocolAdapter interface for HTTP/REST protocol,
 enabling protocol-agnostic development.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from odin.core.agent_interface import IAgent
 from odin.logging import get_logger
 from odin.protocols.base_adapter import IProtocolAdapter
+
+if TYPE_CHECKING:
+    from odin.core.agent_interface import IAgent
 
 logger = get_logger(__name__)
 
@@ -140,7 +142,7 @@ class HTTPAdapter(IProtocolAdapter):
         from starlette.routing import Match
 
         for route in self.app.routes:
-            match, scope = route.matches({"type": "http", "path": request.url.path, "method": request.method})
+            match, _scope = route.matches({"type": "http", "path": request.url.path, "method": request.method})
             if match == Match.FULL:
                 # Found matching route, let FastAPI handle it
                 response = await route.handle(request.scope, request.receive, request._send)
@@ -335,11 +337,13 @@ class HTTPAdapter(IProtocolAdapter):
                 return ToolExecutionResponse(success=False, result=None, error=str(e))
 
         @self.app.post("/execute/{tool_name}", response_model=ToolExecutionResponse)
-        async def execute_tool_by_path(tool_name: str, parameters: dict[str, Any] = {}):
+        async def execute_tool_by_path(tool_name: str, parameters: dict[str, Any] | None = None):
             """Execute a tool by path parameter.
 
             Alternative endpoint that takes tool name in URL path.
             """
+            if parameters is None:
+                parameters = {}
             request = ToolExecutionRequest(tool_name=tool_name, parameters=parameters)
             return await execute_tool(request)
 

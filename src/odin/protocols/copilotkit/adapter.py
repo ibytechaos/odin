@@ -15,12 +15,14 @@ We work around this by creating OdinLangGraphAgent that:
 """
 
 import uuid
-from typing import Any, Annotated, Optional, List
+from typing import TYPE_CHECKING, Annotated, Any
 
-from fastapi import FastAPI
-
-from odin.core.odin import Odin
 from odin.logging import get_logger
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+
+    from odin.core.odin import Odin
 
 logger = get_logger(__name__)
 
@@ -117,7 +119,7 @@ class OdinLangGraphAgent:
 
     def _convert_copilotkit_messages_to_langchain(self, messages: list) -> list:
         """Convert CopilotKit messages to LangChain format."""
-        from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
         result = []
         for msg in messages:
@@ -142,10 +144,10 @@ class OdinLangGraphAgent:
         *,
         thread_id: str,
         state: dict,
-        messages: List[dict],
-        actions: Optional[List[dict]] = None,
-        config: Optional[dict] = None,
-        meta_events: Optional[List[dict]] = None,
+        messages: list[dict],
+        actions: list[dict] | None = None,
+        config: dict | None = None,
+        meta_events: list[dict] | None = None,
         **kwargs
     ):
         """Execute the agent and yield streaming events.
@@ -167,14 +169,14 @@ class OdinLangGraphAgent:
         *,
         thread_id: str,
         state: dict,
-        messages: List[dict],
-        actions: Optional[List[dict]] = None,
-        config: Optional[dict] = None,
+        messages: list[dict],
+        actions: list[dict] | None = None,
+        config: dict | None = None,
         **kwargs
     ):
         """Stream events from graph execution."""
-        from langchain_core.runnables import ensure_config
         from langchain_core.load import dumps as langchain_dumps
+        from langchain_core.runnables import ensure_config
 
         # Setup config
         run_config = ensure_config(config or {})
@@ -213,7 +215,7 @@ class OdinLangGraphAgent:
                 current_node = event.get("name")
 
                 # Track node name
-                if current_node and current_node in self.graph.nodes.keys():
+                if current_node and current_node in self.graph.nodes:
                     node_name = current_node
 
                 # Update current state from chain_end events
@@ -261,7 +263,7 @@ class OdinLangGraphAgent:
             yield langchain_dumps({
                 "event": "error",
                 "data": {
-                    "message": f"Error: {str(e)}",
+                    "message": f"Error: {e!s}",
                     "thread_id": thread_id,
                     "agent_name": self.name,
                 }
@@ -278,11 +280,12 @@ def create_odin_langgraph_agent(odin_app: Odin):
     Returns:
         Compiled LangGraph StateGraph
     """
-    from langchain_core.messages import SystemMessage, ToolMessage
-    from langgraph.graph import StateGraph, START, END
-    from langgraph.graph.message import add_messages
-    from typing import TypedDict
     import json
+    from typing import TypedDict
+
+    from langchain_core.messages import SystemMessage, ToolMessage
+    from langgraph.graph import END, START, StateGraph
+    from langgraph.graph.message import add_messages
 
     # Create tools from Odin
     odin_tools = []
@@ -291,8 +294,9 @@ def create_odin_langgraph_agent(odin_app: Odin):
         tool_name = tool_def["name"]
 
         # Create LangChain tool using StructuredTool
-        from langchain_core.tools import StructuredTool
         import asyncio
+
+        from langchain_core.tools import StructuredTool
 
         # Wrapper to handle async execution
         def make_sync_wrapper(t_name):
@@ -325,10 +329,7 @@ def create_odin_langgraph_agent(odin_app: Odin):
     llm = create_llm()
 
     # Bind tools to LLM
-    if odin_tools:
-        llm_with_tools = llm.bind_tools(odin_tools)
-    else:
-        llm_with_tools = llm
+    llm_with_tools = llm.bind_tools(odin_tools) if odin_tools else llm
 
     # Define state
     class AgentState(TypedDict):
@@ -343,7 +344,7 @@ def create_odin_langgraph_agent(odin_app: Odin):
             system_msg = SystemMessage(content="""You are a helpful AI assistant with access to various tools.
 Use the available tools to help answer user questions about weather, calendar events, and data analytics.
 Always be helpful and provide clear, concise responses.""")
-            messages = [system_msg] + list(messages)
+            messages = [system_msg, *list(messages)]
 
         response = llm_with_tools.invoke(messages)
         return {"messages": [response]}
@@ -366,7 +367,7 @@ Always be helpful and provide clear, concise responses.""")
                 result = asyncio.run(odin_app.execute_tool(tool_name, **tool_args))
                 result_str = json.dumps(result) if isinstance(result, dict) else str(result)
             except Exception as e:
-                result_str = f"Error executing tool: {str(e)}"
+                result_str = f"Error executing tool: {e!s}"
 
             tool_results.append(
                 ToolMessage(content=result_str, tool_call_id=tool_call["id"])
@@ -445,10 +446,10 @@ class CopilotKitAdapter:
         """
         try:
             from copilotkit import Action as CopilotAction
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "copilotkit package is required. Install with: pip install copilotkit"
-            )
+            ) from e
 
         # Convert parameters to CopilotKit format
         parameters = []
@@ -561,10 +562,10 @@ class CopilotKitAdapter:
         """
         try:
             from copilotkit import CopilotKitRemoteEndpoint
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "copilotkit package is required. Install with: pip install copilotkit"
-            )
+            ) from e
 
         if self._sdk is None:
             actions = self.get_actions()
@@ -601,10 +602,10 @@ class CopilotKitAdapter:
         """
         try:
             from copilotkit.integrations.fastapi import add_fastapi_endpoint
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "copilotkit package is required. Install with: pip install copilotkit"
-            )
+            ) from e
 
         sdk = self.get_sdk()
         add_fastapi_endpoint(app, sdk, path)

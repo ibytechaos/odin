@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import json
+import contextlib
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 from uuid import uuid4
 
 from pydantic import Field
@@ -31,13 +31,10 @@ from odin.plugins import DecoratorPlugin, PluginConfig
 from odin.utils.browser_session import (
     BrowserConfig,
     BrowserSession,
-    BrowserSessionError,
-    get_browser_session,
     cleanup_browser_session,
     run_with_browser,
 )
 from odin.utils.progress import (
-    ProgressTracker,
     ProgressStatus,
     progress_tracker,
     task_manager,
@@ -320,9 +317,9 @@ class XiaohongshuPlugin(DecoratorPlugin):
 
             # Handle base64 images
             if images_base64:
-                for i, img_b64 in enumerate(images_base64):
-                    # Decode and save to temp file
-                    temp_file = tempfile.NamedTemporaryFile(
+                for _i, img_b64 in enumerate(images_base64):
+                    # Decode and save to temp file (delete=False for later use)
+                    temp_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
                         suffix=".png", delete=False
                     )
                     temp_file.write(base64.b64decode(img_b64))
@@ -344,7 +341,7 @@ class XiaohongshuPlugin(DecoratorPlugin):
 
                 # Upload images
                 try:
-                    file_input = await session.wait_for_selector(
+                    await session.wait_for_selector(
                         'input[type="file"]',
                         timeout=10000,
                     )
@@ -357,19 +354,15 @@ class XiaohongshuPlugin(DecoratorPlugin):
                     }
 
                 # Fill in title
-                try:
+                with contextlib.suppress(Exception):
                     await session.fill('[class*="title"] input, #title', title)
-                except Exception:
-                    pass
 
                 # Fill in content
-                try:
+                with contextlib.suppress(Exception):
                     await session.fill(
                         '[class*="content"] textarea, #content, [contenteditable="true"]',
                         content,
                     )
-                except Exception:
-                    pass
 
                 # Add tags
                 if tags:

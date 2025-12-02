@@ -8,7 +8,6 @@ This module provides specialized metrics for AI/Agent systems:
 """
 
 from functools import lru_cache
-from typing import Any
 
 from opentelemetry import metrics
 

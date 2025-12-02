@@ -21,7 +21,6 @@ from pydantic import Field
 
 from odin.decorators import tool
 from odin.plugins import DecoratorPlugin, PluginConfig
-
 from odin.utils.http_client import AsyncHTTPClient, HTTPClientError
 
 
@@ -118,7 +117,7 @@ class GitHubPlugin(DecoratorPlugin):
                     limit=limit * 2,  # Fetch more for filtering
                 )
                 repos.extend(community_repos)
-            except Exception as e:
+            except Exception:
                 # Fall back to GitHub search API
                 search_repos = await self._fetch_from_search_api(
                     language=language,
@@ -633,8 +632,8 @@ class GitHubPlugin(DecoratorPlugin):
             "",
             "## Properties",
             "",
-            f"| Property | Value |",
-            f"| --- | --- |",
+            "| Property | Value |",
+            "| --- | --- |",
             f"| Stars | {analysis.get('stars', 0)} |",
             f"| Forks | {analysis.get('forks', 0)} |",
             f"| Language | {analysis.get('language', 'N/A')} |",

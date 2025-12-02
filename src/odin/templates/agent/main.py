@@ -17,14 +17,13 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Any
 
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import uvicorn
-
 from odin import Odin
 from odin.logging import get_logger
 from odin.protocols.copilotkit import CopilotKitAdapter
+from pydantic import BaseModel
 
 logger = get_logger(__name__)
 
@@ -197,6 +196,7 @@ async def main():
 
     # Initialize Odin (tools are auto-discovered from ./tools directory)
     from pathlib import Path
+
     from odin.config import Settings
 
     settings = Settings(

@@ -43,16 +43,18 @@ import asyncio
 import importlib
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from odin.config.app_config import AppConfig, ProtocolType, load_app_config
-from odin.core.agent_interface import IAgent
 from odin.core.odin import Odin
 from odin.logging import get_logger
 from odin.plugins import AgentPlugin
+
+if TYPE_CHECKING:
+    from odin.core.agent_interface import IAgent
 
 logger = get_logger(__name__)
 

@@ -47,7 +47,7 @@ class ErrorHandler:
         self.suppress = suppress
         self.error: Exception | None = None
 
-    def __enter__(self) -> "ErrorHandler":
+    def __enter__(self) -> ErrorHandler:
         """Enter context."""
         return self
 
@@ -68,10 +68,7 @@ class ErrorHandler:
         if isinstance(exc_val, Exception):
             self.error = exc_val
 
-        if self.suppress:
-            return True
-
-        return False
+        return bool(self.suppress)
 
     def get_error_dict(self) -> dict[str, Any] | None:
         """Get formatted error dictionary if error occurred."""

@@ -5,10 +5,14 @@ This module defines the unified Agent interface that all agent backends
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator
+from typing import TYPE_CHECKING, Any
+
 from typing_extensions import TypedDict
 
-from odin.plugins.base import Tool
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from odin.plugins.base import Tool
 
 
 class AgentState(TypedDict, total=False):
@@ -88,7 +92,7 @@ class IAgent(ABC):
         state: AgentState | None = None,
         thread_id: str,
         **kwargs: Any,
-    ) -> AsyncGenerator[AgentEvent, None]:
+    ) -> AsyncGenerator[AgentEvent]:
         """Execute agent and yield events.
 
         Args:

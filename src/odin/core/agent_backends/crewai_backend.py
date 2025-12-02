@@ -4,17 +4,21 @@ This is the default agent backend for Odin, using CrewAI for multi-agent orchest
 """
 
 import asyncio
-import json
-from typing import Any, AsyncGenerator
+from typing import TYPE_CHECKING, Any
 
-from crewai import Agent as CrewAgent, Crew, Task
+from crewai import Agent as CrewAgent
+from crewai import Crew, Task
 from crewai.tools import BaseTool as CrewAIBaseTool
 from pydantic import Field
 
 from odin.core.agent_interface import AgentEvent, AgentState, IAgent
 from odin.core.llm_factory import create_llm
 from odin.logging import get_logger
-from odin.plugins.base import Tool
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from odin.plugins.base import Tool
 
 logger = get_logger(__name__)
 
@@ -33,7 +37,6 @@ class OdinToolWrapper(CrewAIBaseTool):
     async def _arun(self, **kwargs: Any) -> Any:
         """Asynchronous execution."""
         # Execute Odin tool
-        from odin import Odin
 
         # Get Odin instance from tool
         odin_app = getattr(self.odin_tool, "_odin_app", None)
@@ -192,8 +195,8 @@ class CrewAIAgentBackend(IAgent):
         input: str | dict,
         state: AgentState | None = None,
         thread_id: str,
-        **kwargs: Any,
-    ) -> AsyncGenerator[AgentEvent, None]:
+        **kwargs: Any,  # noqa: ARG002
+    ) -> AsyncGenerator[AgentEvent]:
         """Execute CrewAI crew and yield events."""
         logger.info("Executing CrewAI agent", agent=self._name, thread_id=thread_id)
 
@@ -344,11 +347,11 @@ class CrewAIAgentBackend(IAgent):
         """
         try:
             from copilotkit.crewai import CrewAIAgent as CopilotKitCrewAIAgent
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "copilotkit[crewai] is required for CopilotKit integration. "
                 "Install with: pip install copilotkit[crewai]"
-            )
+            ) from e
 
         return CopilotKitCrewAIAgent(
             name=self._name,

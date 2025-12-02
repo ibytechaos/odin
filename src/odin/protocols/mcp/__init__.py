@@ -3,4 +3,4 @@
 from odin.protocols.mcp.adapter import MCPAdapter
 from odin.protocols.mcp.server import MCPServer
 
-__all__ = ["MCPServer", "MCPAdapter"]
+__all__ = ["MCPAdapter", "MCPServer"]

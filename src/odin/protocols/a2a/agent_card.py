@@ -1,6 +1,7 @@
 """Agent Card generation for A2A protocol."""
 
-from odin.core.odin import Odin
+from typing import TYPE_CHECKING
+
 from odin.logging import get_logger
 from odin.protocols.a2a.models import (
     AgentCapabilities,
@@ -9,6 +10,9 @@ from odin.protocols.a2a.models import (
     ProviderInfo,
     SecurityScheme,
 )
+
+if TYPE_CHECKING:
+    from odin.core.odin import Odin
 
 logger = get_logger(__name__)
 

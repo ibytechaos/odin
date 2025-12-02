@@ -5,13 +5,11 @@ enabling protocol-agnostic development.
 """
 
 import asyncio
-import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException
 from sse_starlette import EventSourceResponse
 
-from odin.core.agent_interface import IAgent
 from odin.logging import get_logger
 from odin.protocols.a2a.models import (
     A2AError,
@@ -30,6 +28,9 @@ from odin.protocols.a2a.models import (
 )
 from odin.protocols.a2a.task_manager import TaskManager
 from odin.protocols.base_adapter import IProtocolAdapter
+
+if TYPE_CHECKING:
+    from odin.core.agent_interface import IAgent
 
 logger = get_logger(__name__)
 
@@ -171,7 +172,8 @@ class A2AAdapter(IProtocolAdapter):
                 )
 
                 # Process message asynchronously
-                asyncio.create_task(self._process_message(task.id, request.message))
+                _task = asyncio.create_task(self._process_message(task.id, request.message))
+                _ = _task  # Store reference to avoid garbage collection
 
                 return SendMessageResponse(task=task)
 
@@ -181,9 +183,9 @@ class A2AAdapter(IProtocolAdapter):
                     status_code=500,
                     detail=A2AError(
                         code="INTERNAL_ERROR",
-                        message=f"Failed to process message: {str(e)}",
+                        message=f"Failed to process message: {e!s}",
                     ).model_dump(),
-                )
+                ) from e
 
         @self.app.post("/message/send/streaming")
         async def send_streaming_message(request: SendMessageRequest):
@@ -213,9 +215,10 @@ class A2AAdapter(IProtocolAdapter):
                         }
 
                         # Process message in background
-                        asyncio.create_task(
+                        _bg_task = asyncio.create_task(
                             self._process_message(task.id, request.message)
                         )
+                        _ = _bg_task  # Store reference to avoid garbage collection
 
                         # Stream updates
                         while True:
@@ -251,7 +254,7 @@ class A2AAdapter(IProtocolAdapter):
                             ]:
                                 break
 
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning("A2A: Streaming timeout", task_id=task.id)
                     except Exception as e:
                         logger.error("A2A: Streaming error", error=str(e))
@@ -266,9 +269,9 @@ class A2AAdapter(IProtocolAdapter):
                     status_code=500,
                     detail=A2AError(
                         code="INTERNAL_ERROR",
-                        message=f"Failed to process message: {str(e)}",
+                        message=f"Failed to process message: {e!s}",
                     ).model_dump(),
-                )
+                ) from e
 
         @self.app.get("/tasks/{task_id}")
         async def get_task(task_id: str, include_history: bool = False) -> GetTaskResponse:
@@ -354,7 +357,7 @@ class A2AAdapter(IProtocolAdapter):
                         ]:
                             break
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning("A2A: Subscription timeout", task_id=task_id)
                 except Exception as e:
                     logger.error("A2A: Subscription error", error=str(e))

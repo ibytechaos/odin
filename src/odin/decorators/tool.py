@@ -34,9 +34,9 @@ Example (Docstring style - legacy):
 """
 
 import inspect
-from typing import Annotated, Any, Callable, TypeVar, get_args, get_origin, get_type_hints
+from collections.abc import Callable
+from typing import Annotated, Any, TypeVar, get_args, get_origin, get_type_hints
 
-from pydantic import Field
 from pydantic.fields import FieldInfo
 
 from odin.plugins.base import Tool, ToolParameter, ToolParameterType

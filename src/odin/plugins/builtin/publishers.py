@@ -23,10 +23,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any, Literal
-from uuid import uuid4
+from typing import Annotated, Any
 
 from pydantic import Field
 
@@ -35,12 +33,7 @@ from odin.plugins import DecoratorPlugin, PluginConfig
 from odin.utils.browser_session import (
     BrowserConfig,
     BrowserSession,
-    get_browser_session,
     run_with_browser,
-)
-from odin.utils.progress import (
-    ProgressStatus,
-    progress_tracker,
 )
 
 

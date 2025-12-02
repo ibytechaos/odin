@@ -41,11 +41,11 @@ def _create_openai_llm(settings: Settings) -> Any:
     """Create OpenAI LLM instance."""
     try:
         from langchain_openai import ChatOpenAI
-    except ImportError:
+    except ImportError as e:
         raise ImportError(
             "langchain-openai is required for OpenAI provider. "
             "Install with: pip install langchain-openai"
-        )
+        ) from e
 
     if not settings.openai_api_key:
         raise ValueError(
@@ -62,7 +62,7 @@ def _create_openai_llm(settings: Settings) -> Any:
         llm_kwargs["base_url"] = settings.openai_base_url
 
     # Print configuration for debugging
-    print(f"[LLM Factory] Creating OpenAI LLM:")
+    print("[LLM Factory] Creating OpenAI LLM:")
     print(f"  Model: {settings.openai_model}")
     print(f"  Base URL: {settings.openai_base_url or '(default: api.openai.com)'}")
 
@@ -79,11 +79,11 @@ def _create_anthropic_llm(settings: Settings) -> Any:
     """Create Anthropic LLM instance."""
     try:
         from langchain_anthropic import ChatAnthropic
-    except ImportError:
+    except ImportError as e:
         raise ImportError(
             "langchain-anthropic is required for Anthropic provider. "
             "Install with: pip install langchain-anthropic"
-        )
+        ) from e
 
     if not settings.anthropic_api_key:
         raise ValueError(
@@ -106,11 +106,11 @@ def _create_azure_openai_llm(settings: Settings) -> Any:
     """Create Azure OpenAI LLM instance."""
     try:
         from langchain_openai import AzureChatOpenAI
-    except ImportError:
+    except ImportError as e:
         raise ImportError(
             "langchain-openai is required for Azure OpenAI provider. "
             "Install with: pip install langchain-openai"
-        )
+        ) from e
 
     if not settings.azure_openai_api_key:
         raise ValueError(
@@ -179,10 +179,10 @@ def _create_memory_checkpointer() -> Any:
     """Create in-memory checkpointer (no persistence)."""
     try:
         from langgraph.checkpoint.memory import MemorySaver
-    except ImportError:
+    except ImportError as e:
         raise ImportError(
             "langgraph is required. Install with: pip install langgraph"
-        )
+        ) from e
 
     logger.info("Using in-memory checkpointer (no persistence)")
     return MemorySaver()
@@ -192,11 +192,11 @@ def _create_sqlite_checkpointer(settings: Settings) -> Any:
     """Create SQLite checkpointer."""
     try:
         from langgraph.checkpoint.sqlite import SqliteSaver
-    except ImportError:
+    except ImportError as e:
         raise ImportError(
             "langgraph-checkpoint-sqlite is required. "
             "Install with: pip install langgraph-checkpoint-sqlite"
-        )
+        ) from e
 
     uri = settings.checkpointer_uri or str(settings.sqlite_path)
     logger.info("Creating SQLite checkpointer", uri=uri)
@@ -208,11 +208,11 @@ def _create_postgres_checkpointer(settings: Settings) -> Any:
     """Create Postgres checkpointer."""
     try:
         from langgraph.checkpoint.postgres import PostgresSaver
-    except ImportError:
+    except ImportError as e:
         raise ImportError(
             "langgraph-checkpoint-postgres is required. "
             "Install with: pip install langgraph-checkpoint-postgres"
-        )
+        ) from e
 
     uri = settings.checkpointer_uri or settings.postgres_url
     if not uri:
@@ -228,11 +228,11 @@ def _create_redis_checkpointer(settings: Settings) -> Any:
     """Create Redis checkpointer."""
     try:
         from langgraph.checkpoint.redis import RedisSaver
-    except ImportError:
+    except ImportError as e:
         raise ImportError(
             "langgraph-checkpoint-redis is required. "
             "Install with: pip install langgraph-checkpoint-redis"
-        )
+        ) from e
 
     uri = settings.checkpointer_uri or settings.redis_url
     logger.info("Creating Redis checkpointer", uri=uri.split("@")[-1])  # Hide credentials

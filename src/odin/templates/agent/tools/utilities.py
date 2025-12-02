@@ -10,8 +10,8 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
-from odin.plugins import DecoratorPlugin
 from odin.decorators import tool
+from odin.plugins import DecoratorPlugin
 
 
 class UtilityTools(DecoratorPlugin):

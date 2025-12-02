@@ -7,12 +7,11 @@ This adapter implements the IProtocolAdapter interface for AG-UI
 import asyncio
 import json
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
-from odin.core.agent_interface import IAgent
 from odin.logging import get_logger
 from odin.protocols.agui.encoder import EventEncoder
 from odin.protocols.agui.models import (
@@ -26,6 +25,9 @@ from odin.protocols.agui.models import (
     ToolCallChunkEvent,
 )
 from odin.protocols.base_adapter import IProtocolAdapter
+
+if TYPE_CHECKING:
+    from odin.core.agent_interface import IAgent
 
 logger = get_logger(__name__)
 
@@ -303,7 +305,7 @@ class AGUIAdapter(IProtocolAdapter):
             logger.error("AG-UI: Agent execution failed", error=str(e))
             yield TextMessageChunkEvent(
                 message_id=message_id,
-                delta=f"\n\nError: {str(e)}",
+                delta=f"\n\nError: {e!s}",
                 thread_id=input_data.thread_id,
                 run_id=input_data.run_id,
             )

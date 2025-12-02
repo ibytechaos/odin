@@ -7,6 +7,7 @@ connection pooling, retry logic, and error handling.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from typing import Any
 
@@ -56,7 +57,7 @@ class AsyncHTTPClient:
         self.default_headers = headers or {}
         self.session: aiohttp.ClientSession | None = None
 
-    async def __aenter__(self) -> "AsyncHTTPClient":
+    async def __aenter__(self) -> AsyncHTTPClient:
         await self.initialize()
         return self
 
@@ -134,10 +135,8 @@ class AsyncHTTPClient:
                     }
 
                     # Try to parse JSON
-                    try:
+                    with contextlib.suppress(Exception):
                         result["json"] = await response.json()
-                    except Exception:
-                        pass
 
                     if response.ok:
                         return result
@@ -152,7 +151,7 @@ class AsyncHTTPClient:
 
             except aiohttp.ClientError as e:
                 last_error = HTTPClientError(f"Request failed: {e}")
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 last_error = HTTPClientError("Request timed out")
 
             # Wait before retry

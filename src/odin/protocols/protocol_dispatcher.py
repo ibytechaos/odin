@@ -1,13 +1,15 @@
 """Protocol dispatcher for automatic protocol detection and routing."""
 
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import Request
-
-from odin.core.agent_interface import IAgent
 from odin.logging import get_logger
-from odin.protocols.base_adapter import IProtocolAdapter
+
+if TYPE_CHECKING:
+    from fastapi import Request
+
+    from odin.core.agent_interface import IAgent
+    from odin.protocols.base_adapter import IProtocolAdapter
 
 logger = get_logger(__name__)
 

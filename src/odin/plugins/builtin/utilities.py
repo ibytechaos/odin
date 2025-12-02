@@ -23,7 +23,7 @@ import math
 import random
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import Field
@@ -139,10 +139,7 @@ class UtilitiesPlugin(DecoratorPlugin):
             Text with replacements applied
         """
         try:
-            if regex:
-                result = re.sub(find, replace, text)
-            else:
-                result = text.replace(find, replace)
+            result = re.sub(find, replace, text) if regex else text.replace(find, replace)
             return {"success": True, "data": {"result": result}}
         except re.error as e:
             return {"success": False, "error": f"Invalid regex: {e}"}
@@ -166,10 +163,7 @@ class UtilitiesPlugin(DecoratorPlugin):
         Returns:
             List of split parts
         """
-        if max_splits == -1:
-            parts = text.split(delimiter)
-        else:
-            parts = text.split(delimiter, max_splits)
+        parts = text.split(delimiter) if max_splits == -1 else text.split(delimiter, max_splits)
         return {"success": True, "data": {"parts": parts, "count": len(parts)}}
 
     @tool(description="Join text parts with delimiter")
@@ -561,10 +555,7 @@ class UtilitiesPlugin(DecoratorPlugin):
         Returns:
             Generated UUID string
         """
-        if version == 1:
-            result = str(uuid.uuid1())
-        else:
-            result = str(uuid.uuid4())
+        result = str(uuid.uuid1()) if version == 1 else str(uuid.uuid4())
         return {"success": True, "data": {"uuid": result}}
 
     # ==================== Date & Time ====================
@@ -584,7 +575,7 @@ class UtilitiesPlugin(DecoratorPlugin):
         Returns:
             Current datetime information
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return {
             "success": True,
             "data": {
@@ -738,7 +729,7 @@ class UtilitiesPlugin(DecoratorPlugin):
 
         def matches(item):
             val = get_val(item)
-            if operator == "eq":
+            if operator == "eq":  # noqa: SIM116
                 return val == value
             elif operator == "ne":
                 return val != value

@@ -1,7 +1,7 @@
 """Example tools - customize this for your agent."""
 
-from odin.plugins import DecoratorPlugin
 from odin.decorators import tool
+from odin.plugins import DecoratorPlugin
 
 
 class ExampleTools(DecoratorPlugin):

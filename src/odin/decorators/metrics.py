@@ -1,8 +1,10 @@
 """Metrics collection decorators."""
 
+import asyncio
 import functools
 import time
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from odin.tracing import get_metrics_collector
 
@@ -164,7 +166,3 @@ def track_errors(
             return sync_wrapper  # type: ignore
 
     return decorator
-
-
-# Import asyncio at the end to avoid circular imports
-import asyncio

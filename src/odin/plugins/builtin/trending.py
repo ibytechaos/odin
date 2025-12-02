@@ -20,7 +20,7 @@ import hashlib
 import random
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, ClassVar
 
 from pydantic import Field
 
@@ -52,7 +52,7 @@ class TrendingPlugin(DecoratorPlugin):
     """
 
     # Tech keywords for filtering
-    TECH_KEYWORDS = {
+    TECH_KEYWORDS: ClassVar[set[str]] = {
         "ai", "artificial intelligence", "machine learning", "deep learning",
         "llm", "gpt", "claude", "openai", "anthropic", "chatgpt",
         "python", "javascript", "typescript", "rust", "go", "java",
@@ -263,17 +263,9 @@ class TrendingPlugin(DecoratorPlugin):
 
     async def _mine_product_hunt(self) -> list[dict[str, Any]]:
         """Mine trending products from Product Hunt."""
-        topics = []
-
-        try:
-            # Using unofficial API endpoint
-            url = "https://api.producthunt.com/v2/api/graphql"
-            # Note: This would need authentication for production use
-            # For now, we skip this source if not configured
-        except Exception:
-            pass
-
-        return topics
+        # Note: This would need authentication for production use
+        # For now, we skip this source if not configured
+        return []
 
     @tool(description="Mine hot tech topics from multiple sources")
     async def trending_mine_hot_topics(

@@ -93,12 +93,7 @@ def find_project_root() -> Path | None:
 
         # Check for tools/ with Python files (simpler project)
         tools_dir = path / "tools"
-        if tools_dir.is_dir():
-            # Must have at least one .py file
-            if any(tools_dir.glob("*.py")):
-                return True
-
-        return False
+        return tools_dir.is_dir() and any(tools_dir.glob("*.py"))
 
     # Check if we're in a project root
     if is_odin_project(cwd):
@@ -296,7 +291,7 @@ def list_agents(as_json: bool, include_builtin: bool, show_all: bool) -> None:
         tools = asyncio.run(_list())
     except Exception as e:
         click.echo(click.style(f"Error loading tools: {e}", fg="red"))
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
     if as_json:
         click.echo(json.dumps(tools, indent=2))
@@ -384,7 +379,7 @@ def test(tool_name: str, params: tuple, json_params: str | None, builtin: bool) 
             kwargs = json.loads(json_params)
         except json.JSONDecodeError as e:
             click.echo(click.style(f"Error parsing JSON params: {e}", fg="red"))
-            raise SystemExit(1)
+            raise SystemExit(1) from e
 
     for param in params:
         if "=" not in param:
@@ -443,15 +438,15 @@ def test(tool_name: str, params: tuple, json_params: str | None, builtin: bool) 
         click.echo(json.dumps(result, indent=2, default=str))
     except ValueError as e:
         click.echo(click.style(f"Error: {e}", fg="red"))
-        raise SystemExit(1)
+        raise SystemExit(1) from e
     except Exception as e:
         click.echo(click.style(f"Execution error: {e}", fg="red"))
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @cli.command()
 @click.option("--interactive", "-i", is_flag=True, help="Interactive REPL mode")
-def repl(interactive: bool) -> None:
+def repl(interactive: bool) -> None:  # noqa: ARG001
     """Start an interactive REPL to test tools.
 
     Examples:
@@ -540,7 +535,7 @@ def repl(interactive: bool) -> None:
 def serve(
     host: str,
     port: int,
-    config: str | None,
+    config: str | None,  # noqa: ARG001
     protocol: Literal["copilotkit", "http", "agui", "a2a"],
     reload: bool,
     standalone: bool,
@@ -634,7 +629,7 @@ def serve(
 
         # Create FastAPI app
         @asynccontextmanager
-        async def lifespan(app: FastAPI):
+        async def lifespan(app: FastAPI):  # noqa: ARG001
             yield
             await odin.shutdown()
 
@@ -716,16 +711,16 @@ def serve(
 
             adapter = CopilotKitAdapter(odin)
             adapter.mount(app, "/copilotkit")
-            click.echo(f"Protocol: CopilotKit at /copilotkit")
+            click.echo("Protocol: CopilotKit at /copilotkit")
         elif protocol == "http":
-            click.echo(f"Protocol: HTTP/REST at /tools")
+            click.echo("Protocol: HTTP/REST at /tools")
         elif protocol == "agui":
             try:
                 from odin.protocols.agui import AGUIServer
 
                 agui = AGUIServer(odin, path="/agui")
                 app.mount("/agui", agui.app)
-                click.echo(f"Protocol: AG-UI at /agui")
+                click.echo("Protocol: AG-UI at /agui")
             except ImportError:
                 click.echo(click.style("AG-UI protocol not available", fg="yellow"))
         elif protocol == "a2a":
@@ -734,7 +729,7 @@ def serve(
 
                 a2a = A2AServer(odin, name="Odin Server")
                 app.mount("/a2a", a2a.app)
-                click.echo(f"Protocol: A2A at /a2a")
+                click.echo("Protocol: A2A at /a2a")
             except ImportError:
                 click.echo(click.style("A2A protocol not available", fg="yellow"))
 

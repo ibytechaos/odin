@@ -19,12 +19,16 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +72,7 @@ class BrowserConfig:
     download_dir: str | None = None
 
     @classmethod
-    def from_env(cls) -> "BrowserConfig":
+    def from_env(cls) -> BrowserConfig:
         """Create config from environment variables.
 
         Environment variables:
@@ -142,10 +146,10 @@ class BrowserSession:
 
         try:
             from playwright.async_api import async_playwright
-        except ImportError:
+        except ImportError as e:
             raise BrowserSessionError(
                 "Playwright is not installed. Install with: pip install playwright && playwright install"
-            )
+            ) from e
 
         logger.info(
             "Initializing browser session (remote=%s, host=%s)",
@@ -166,34 +170,26 @@ class BrowserSession:
     async def close(self) -> None:
         """Cleanup browser resources."""
         if self.page:
-            try:
+            with contextlib.suppress(Exception):
                 await self.page.close()
-            except Exception:
-                pass
             self.page = None
 
         if self.context:
-            try:
+            with contextlib.suppress(Exception):
                 await self.context.close()
-            except Exception:
-                pass
             self.context = None
 
         if self.browser:
-            try:
+            with contextlib.suppress(Exception):
                 await self.browser.close()
-            except Exception:
-                pass
             self.browser = None
 
         if self.playwright:
-            try:
+            with contextlib.suppress(Exception):
                 await self.playwright.__aexit__(None, None, None)
-            except Exception:
-                pass
             self.playwright = None
 
-    async def __aenter__(self) -> "BrowserSession":
+    async def __aenter__(self) -> BrowserSession:
         await self.start()
         return self
 
@@ -270,19 +266,21 @@ class BrowserSession:
         connector = aiohttp.TCPConnector(ssl=ssl_context)
 
         try:
-            async with aiohttp.ClientSession(connector=connector) as http_session:
-                async with http_session.get(
+            async with (
+                aiohttp.ClientSession(connector=connector) as http_session,
+                http_session.get(
                     f"{cdp_url}/json/version",
                     timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    data = await response.json()
-                    ws_url = data.get("webSocketDebuggerUrl", "")
+                ) as response,
+            ):
+                data = await response.json()
+                ws_url = data.get("webSocketDebuggerUrl", "")
 
-                    # If TLS, ensure WebSocket URL uses wss://
-                    if self.config.tls and ws_url.startswith("ws://"):
-                        ws_url = "wss://" + ws_url[5:]
+                # If TLS, ensure WebSocket URL uses wss://
+                if self.config.tls and ws_url.startswith("ws://"):
+                    ws_url = "wss://" + ws_url[5:]
 
-                    return ws_url
+                return ws_url
         except Exception as e:
             raise BrowserConnectionError(
                 f"Failed to get WebSocket endpoint from {cdp_url}/json/version: {e}"
@@ -466,7 +464,7 @@ async def cleanup_all_browser_sessions() -> None:
                     logger.error("Error closing browser session: %s", e)
 
 
-async def run_with_browser(
+async def run_with_browser[T](
     fn: Callable[[BrowserSession], Awaitable[T]],
     host: str | None = None,
     port: int | None = None,

@@ -5,15 +5,18 @@ enabling protocol-agnostic development.
 """
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool as MCPTool, TextContent
+from mcp.types import TextContent
+from mcp.types import Tool as MCPTool
 
-from odin.core.agent_interface import IAgent
 from odin.logging import get_logger
 from odin.protocols.base_adapter import IProtocolAdapter
+
+if TYPE_CHECKING:
+    from odin.core.agent_interface import IAgent
 
 logger = get_logger(__name__)
 
@@ -143,7 +146,7 @@ class MCPAdapter(IProtocolAdapter):
         except Exception as e:
             logger.error("MCP: Tool execution failed", tool=name, error=str(e))
 
-            error_text = f"Error executing tool '{name}': {str(e)}"
+            error_text = f"Error executing tool '{name}': {e!s}"
             return [
                 TextContent(
                     type="text",

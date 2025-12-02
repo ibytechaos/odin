@@ -2,25 +2,19 @@
 
 import asyncio
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, HTTPException
 from sse_starlette import EventSourceResponse
 
-from odin.core.odin import Odin
 from odin.logging import get_logger
 from odin.protocols.a2a.agent_card import AgentCardGenerator, create_default_agent_card
 from odin.protocols.a2a.models import (
     A2AError,
     AgentCard,
-    GetTaskRequest,
     GetTaskResponse,
-    ListTasksRequest,
     ListTasksResponse,
     Message,
-    MessagePart,
-    MessageRole,
     SendMessageRequest,
     SendMessageResponse,
     TaskArtifact,
@@ -30,6 +24,9 @@ from odin.protocols.a2a.models import (
     TextPart,
 )
 from odin.protocols.a2a.task_manager import TaskManager
+
+if TYPE_CHECKING:
+    from odin.core.odin import Odin
 
 logger = get_logger(__name__)
 
@@ -123,7 +120,8 @@ class A2AServer:
                 )
 
                 # Process message asynchronously
-                asyncio.create_task(self._process_message(task.id, request.message))
+                _task = asyncio.create_task(self._process_message(task.id, request.message))
+                _ = _task  # Store reference to avoid garbage collection
 
                 return SendMessageResponse(task=task)
 
@@ -133,9 +131,9 @@ class A2AServer:
                     status_code=500,
                     detail=A2AError(
                         code="INTERNAL_ERROR",
-                        message=f"Failed to process message: {str(e)}",
+                        message=f"Failed to process message: {e!s}",
                     ).model_dump(),
-                )
+                ) from e
 
         @self.app.post("/message/send/streaming")
         async def send_streaming_message(request: SendMessageRequest):
@@ -169,9 +167,10 @@ class A2AServer:
                         }
 
                         # Process message in background
-                        asyncio.create_task(
+                        _bg_task = asyncio.create_task(
                             self._process_message(task.id, request.message)
                         )
+                        _ = _bg_task  # Store reference to avoid garbage collection
 
                         # Stream updates
                         while True:
@@ -210,7 +209,7 @@ class A2AServer:
                             ]:
                                 break
 
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning("A2A: Streaming timeout", task_id=task.id)
                     except Exception as e:
                         logger.error("A2A: Streaming error", error=str(e))
@@ -225,9 +224,9 @@ class A2AServer:
                     status_code=500,
                     detail=A2AError(
                         code="INTERNAL_ERROR",
-                        message=f"Failed to process message: {str(e)}",
+                        message=f"Failed to process message: {e!s}",
                     ).model_dump(),
-                )
+                ) from e
 
         @self.app.get("/tasks/{task_id}")
         async def get_task(task_id: str, include_history: bool = False) -> GetTaskResponse:
@@ -319,7 +318,7 @@ class A2AServer:
                         ]:
                             break
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning("A2A: Subscription timeout", task_id=task_id)
                 except Exception as e:
                     logger.error("A2A: Subscription error", error=str(e))

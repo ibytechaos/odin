@@ -3,13 +3,17 @@
 This module provides Prometheus-compatible metrics endpoint.
 """
 
+from typing import TYPE_CHECKING
+
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.resources import Resource
 from prometheus_client import REGISTRY, start_http_server
 
-from odin.config import Settings
 from odin.logging import get_logger
+
+if TYPE_CHECKING:
+    from odin.config import Settings
 
 logger = get_logger(__name__)
 

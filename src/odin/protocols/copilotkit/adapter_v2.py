@@ -4,14 +4,15 @@ This new adapter supports multiple agent backends (CrewAI, LangGraph) through
 the unified IAgent interface.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI
-
-from odin.core.agent_interface import IAgent
 from odin.logging import get_logger
-from odin.plugins.base import Tool
 from odin.protocols.base_adapter import IProtocolAdapter
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+
+    from odin.core.agent_interface import IAgent
 
 logger = get_logger(__name__)
 
@@ -57,11 +58,11 @@ class CopilotKitAdapter(IProtocolAdapter):
             List of CopilotKit Action objects
         """
         try:
-            from copilotkit import Action as CopilotAction
-        except ImportError:
+            from copilotkit import Action as CopilotAction  # noqa: F401
+        except ImportError as e:
             raise ImportError(
                 "copilotkit package is required. Install with: pip install copilotkit"
-            )
+            ) from e
 
         if self._actions:
             return self._actions
@@ -98,10 +99,10 @@ class CopilotKitAdapter(IProtocolAdapter):
 
         try:
             from copilotkit import CopilotKitRemoteEndpoint
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "copilotkit package is required. Install with: pip install copilotkit"
-            )
+            ) from e
 
         logger.info(
             "Creating CopilotKit SDK",
@@ -194,10 +195,10 @@ class CopilotKitAdapter(IProtocolAdapter):
         """
         try:
             from copilotkit.integrations.fastapi import add_fastapi_endpoint
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "copilotkit package is required. Install with: pip install copilotkit"
-            )
+            ) from e
 
         logger.info(
             "Mounting CopilotKit endpoint",

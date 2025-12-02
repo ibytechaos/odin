@@ -3,16 +3,14 @@
 import asyncio
 import json
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
-from odin.core.odin import Odin
 from odin.logging import get_logger
 from odin.protocols.agui.encoder import EventEncoder
 from odin.protocols.agui.models import (
-    Message,
     MessageRole,
     RunAgentInput,
     RunErrorEvent,
@@ -22,6 +20,9 @@ from odin.protocols.agui.models import (
     Tool,
     ToolCallChunkEvent,
 )
+
+if TYPE_CHECKING:
+    from odin.core.odin import Odin
 
 logger = get_logger(__name__)
 
@@ -215,7 +216,7 @@ class AGUIServer:
                 logger.error("AG-UI: Tool execution failed", tool=matched_tool["name"], error=str(e))
                 yield TextMessageChunkEvent(
                     message_id=message_id,
-                    delta=f"\n\nError executing tool: {str(e)}",
+                    delta=f"\n\nError executing tool: {e!s}",
                     thread_id=input_data.thread_id,
                     run_id=input_data.run_id,
                 )

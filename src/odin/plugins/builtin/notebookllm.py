@@ -40,10 +40,9 @@ from pydantic import Field
 from odin.decorators import tool
 from odin.plugins import DecoratorPlugin, PluginConfig
 from odin.utils.browser_session import (
-    BrowserConfig,
     BrowserSession,
-    get_browser_session,
     cleanup_all_browser_sessions,
+    get_browser_session,
 )
 
 
@@ -76,7 +75,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
             self._session = await get_browser_session()
         return self._session
 
-    async def _get_page(self):
+    async def _get_page(self) -> Any:
         """Get browser page from session."""
         session = await self._get_session()
         return session.page
@@ -86,7 +85,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
         await cleanup_all_browser_sessions()
         self._session = None
 
-    async def _wait_for_notebookllm_ready(self, page, timeout: int = 60) -> bool:
+    async def _wait_for_notebookllm_ready(self, page: Any, timeout: int = 60) -> bool:
         """Wait for NotebookLLM page to be ready (logged in and loaded)."""
         try:
             await page.wait_for_selector(
@@ -100,6 +99,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
 
     async def _create_new_notebook(self, notebook_name: str | None = None) -> str | None:
         """Create a new notebook and return its URL."""
+        _ = notebook_name  # Reserved for future use
         page = await self._get_page()
 
         await page.goto("https://notebooklm.google.com/", wait_until="domcontentloaded")
@@ -120,7 +120,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
             await create_btn.click()
             await asyncio.sleep(4)
 
-        current_url = page.url
+        current_url: str = page.url
 
         if "notebooklm.google.com/notebook/" in current_url:
             return current_url
@@ -698,7 +698,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
 
     async def _wait_for_content_rendered(
         self,
-        page,
+        page: Any,
         content_type: str,
         timeout: int = 60,
     ) -> bool:
@@ -768,7 +768,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
 
     async def _download_artifact(
         self,
-        page,
+        page: Any,
         artifact_icon: str,
         content_type: str,
         output_path: Path,
@@ -991,27 +991,27 @@ class NotebookLLMPlugin(DecoratorPlugin):
                         "mime_type": f"image/{format}",
                     })
 
-            result = {
-                "success": True,
-                "data": {
-                    "message": f"Converted {len(images)} pages to images",
-                    "total_pages": len(images),
-                    "images": image_files,
-                    "output_dir": str(output_path),
-                    "format": format,
-                    "dpi": dpi,
-                },
+            result_data: dict[str, Any] = {
+                "message": f"Converted {len(images)} pages to images",
+                "total_pages": len(images),
+                "images": image_files,
+                "output_dir": str(output_path),
+                "format": format,
+                "dpi": dpi,
             }
 
             if return_base64:
-                result["data"]["base64_images"] = base64_images
+                result_data["base64_images"] = base64_images
 
-            return result
+            return {
+                "success": True,
+                "data": result_data,
+            }
 
         except Exception as e:
             return {
                 "success": False,
-                "error": f"PDF conversion failed: {str(e)}",
+                "error": f"PDF conversion failed: {e!s}",
             }
 
     def _detect_layout_with_yolo(
@@ -1157,8 +1157,9 @@ class NotebookLLMPlugin(DecoratorPlugin):
             return ""
 
         try:
-            from PIL import Image
             import tempfile
+
+            from PIL import Image
 
             img = Image.open(image_path)
             x, y, w, h = bbox["x"], bbox["y"], bbox["w"], bbox["h"]
@@ -1174,17 +1175,16 @@ class NotebookLLMPlugin(DecoratorPlugin):
             Path(temp_path).unlink(missing_ok=True)
 
             # PaddleOCR 3.x returns list of dicts with 'rec_texts' key
-            if result:
-                if isinstance(result, list) and len(result) > 0:
-                    first_result = result[0]
-                    # PaddleOCR 3.x format: dict with 'rec_texts'
-                    if isinstance(first_result, dict) and "rec_texts" in first_result:
-                        texts = first_result.get("rec_texts", [])
-                        return " ".join(texts) if texts else ""
-                    # PaddleOCR 2.x format: list of [box, (text, conf)]
-                    elif isinstance(first_result, (list, tuple)) and len(first_result) >= 2:
-                        texts = [line[1][0] for line in result[0] if line and len(line) >= 2]
-                        return " ".join(texts)
+            if result and isinstance(result, list) and len(result) > 0:
+                first_result = result[0]
+                # PaddleOCR 3.x format: dict with 'rec_texts'
+                if isinstance(first_result, dict) and "rec_texts" in first_result:
+                    texts = first_result.get("rec_texts", [])
+                    return " ".join(texts) if texts else ""
+                # PaddleOCR 2.x format: list of [box, (text, conf)]
+                if isinstance(first_result, (list, tuple)) and len(first_result) >= 2:
+                    texts = [line[1][0] for line in result[0] if line and len(line) >= 2]
+                    return " ".join(texts)
 
             return ""
         except Exception:
@@ -1257,9 +1257,9 @@ class NotebookLLMPlugin(DecoratorPlugin):
         try:
             from PIL import Image
             from pptx import Presentation
-            from pptx.util import Inches, Pt
             from pptx.dml.color import RGBColor
             from pptx.enum.text import PP_ALIGN
+            from pptx.util import Inches, Pt
         except ImportError as e:
             missing = str(e).split("'")[1] if "'" in str(e) else str(e)
             return {
@@ -1274,12 +1274,12 @@ class NotebookLLMPlugin(DecoratorPlugin):
         prs = Presentation()
         blank_layout = prs.slide_layouts[6]
 
-        processed_slides = []
-        temp_files = []
+        processed_slides: list[dict[str, Any]] = []
+        temp_files: list[Path] = []
 
         try:
             for idx, image_path in enumerate(image_paths):
-                slide_info = {
+                slide_info: dict[str, Any] = {
                     "page": idx + 1,
                     "image": image_path,
                     "elements": 0,
@@ -1320,7 +1320,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
                         elements = []
                     except Exception as e:
                         slide_info["status"] = "warning"
-                        slide_info["warning"] = f"Layout detection failed: {str(e)}"
+                        slide_info["warning"] = f"Layout detection failed: {e!s}"
                         elements = []
                     bg_color = self._detect_background_color(image_path)
 
@@ -1430,10 +1430,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
             prs.save(str(output_file))
 
             for temp_file in temp_files:
-                try:
-                    temp_file.unlink()
-                except Exception:
-                    pass
+                temp_file.unlink(missing_ok=True)
 
             success_count = sum(1 for s in processed_slides if s["status"] == "success")
             total_elements = sum(s.get("elements", 0) for s in processed_slides)
@@ -1456,14 +1453,11 @@ class NotebookLLMPlugin(DecoratorPlugin):
 
         except Exception as e:
             for temp_file in temp_files:
-                try:
-                    temp_file.unlink()
-                except Exception:
-                    pass
+                temp_file.unlink(missing_ok=True)
 
             return {
                 "success": False,
-                "error": f"PPTX generation failed: {str(e)}",
+                "error": f"PPTX generation failed: {e!s}",
             }
 
     @tool(description="Close the browser connection")

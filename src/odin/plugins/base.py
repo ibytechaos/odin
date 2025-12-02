@@ -255,6 +255,7 @@ class DecoratorPlugin(AgentPlugin):
     async def execute_tool(self, tool_name: str, **kwargs: Any) -> dict[str, Any]:
         """Execute a @tool decorated method by name."""
         import asyncio
+
         from odin.decorators.tool import get_tool_from_function, is_tool
 
         for attr_name in dir(self):

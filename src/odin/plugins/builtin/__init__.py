@@ -17,28 +17,28 @@ Available plugins:
 - PublishersPlugin: Multi-platform blog publishing automation
 """
 
-from odin.plugins.builtin.http import HTTPPlugin
-from odin.plugins.builtin.utilities import UtilitiesPlugin
-from odin.plugins.builtin.notebookllm import NotebookLLMPlugin
-from odin.plugins.builtin.github import GitHubPlugin
-from odin.plugins.builtin.xiaohongshu import XiaohongshuPlugin
-from odin.plugins.builtin.gemini import GeminiPlugin
-from odin.plugins.builtin.google import GooglePlugin
-from odin.plugins.builtin.trending import TrendingPlugin
 from odin.plugins.builtin.content import ContentPlugin
+from odin.plugins.builtin.gemini import GeminiPlugin
+from odin.plugins.builtin.github import GitHubPlugin
+from odin.plugins.builtin.google import GooglePlugin
+from odin.plugins.builtin.http import HTTPPlugin
+from odin.plugins.builtin.notebookllm import NotebookLLMPlugin
 from odin.plugins.builtin.publishers import PublishersPlugin
+from odin.plugins.builtin.trending import TrendingPlugin
+from odin.plugins.builtin.utilities import UtilitiesPlugin
+from odin.plugins.builtin.xiaohongshu import XiaohongshuPlugin
 
 __all__ = [
-    "HTTPPlugin",
-    "UtilitiesPlugin",
-    "NotebookLLMPlugin",
-    "GitHubPlugin",
-    "XiaohongshuPlugin",
-    "GeminiPlugin",
-    "GooglePlugin",
-    "TrendingPlugin",
     "ContentPlugin",
+    "GeminiPlugin",
+    "GitHubPlugin",
+    "GooglePlugin",
+    "HTTPPlugin",
+    "NotebookLLMPlugin",
     "PublishersPlugin",
+    "TrendingPlugin",
+    "UtilitiesPlugin",
+    "XiaohongshuPlugin",
 ]
 
 # Plugin registry for easy loading
