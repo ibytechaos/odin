@@ -1,0 +1,473 @@
+{
+  "name": "NotebookLLM Automation",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "source_url",
+              "value": "={{ $json.source_url || 'https://example.com/article' }}"
+            },
+            {
+              "name": "output_dir",
+              "value": "={{ $json.output_dir || '/tmp/notebookllm' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-params",
+      "name": "Set Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "connectionType": "http",
+        "operation": "executeTool",
+        "toolName": "notebookllm_add_source",
+        "toolParameters": "={\n  \"source_url\": \"{{ $json.source_url }}\",\n  \"wait_for_processing\": true,\n  \"timeout\": 120\n}"
+      },
+      "id": "add-source",
+      "name": "1. Add Source",
+      "type": "n8n-nodes-mcp.mcpClient",
+      "typeVersion": 1,
+      "position": [440, 0],
+      "credentials": {
+        "mcpClientHttpApi": {
+          "id": "uBSIIM5BUFsEhOTn",
+          "name": "odin"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "notebook_url",
+              "value": "={{ $json.data.notebook_url }}"
+            },
+            {
+              "name": "success",
+              "value": "={{ $json.success }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-notebook-url",
+      "name": "Extract Notebook URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-success",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-add-source",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "connectionType": "http",
+        "operation": "executeTool",
+        "toolName": "notebookllm_generate_infographic",
+        "toolParameters": "={\n  \"notebook_url\": \"{{ $('extract-notebook-url').item.json.notebook_url }}\",\n  \"timeout\": 180\n}"
+      },
+      "id": "generate-infographic",
+      "name": "2a. Generate Infographic",
+      "type": "n8n-nodes-mcp.mcpClient",
+      "typeVersion": 1,
+      "position": [1100, -100],
+      "credentials": {
+        "mcpClientHttpApi": {
+          "id": "uBSIIM5BUFsEhOTn",
+          "name": "odin"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "connectionType": "http",
+        "operation": "executeTool",
+        "toolName": "notebookllm_generate_presentation",
+        "toolParameters": "={\n  \"notebook_url\": \"{{ $('extract-notebook-url').item.json.notebook_url }}\",\n  \"timeout\": 3600\n}"
+      },
+      "id": "generate-presentation",
+      "name": "2b. Generate Presentation",
+      "type": "n8n-nodes-mcp.mcpClient",
+      "typeVersion": 1,
+      "position": [1100, 100],
+      "credentials": {
+        "mcpClientHttpApi": {
+          "id": "uBSIIM5BUFsEhOTn",
+          "name": "odin"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-generation",
+      "name": "Wait for Both",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1320, 0]
+    },
+    {
+      "parameters": {
+        "connectionType": "http",
+        "operation": "executeTool",
+        "toolName": "notebookllm_download_content",
+        "toolParameters": "={\n  \"notebook_url\": \"{{ $('extract-notebook-url').item.json.notebook_url }}\",\n  \"content_type\": \"infographic\",\n  \"output_dir\": \"{{ $('set-params').item.json.output_dir }}\",\n  \"timeout\": 120\n}"
+      },
+      "id": "download-infographic",
+      "name": "3a. Download Infographic",
+      "type": "n8n-nodes-mcp.mcpClient",
+      "typeVersion": 1,
+      "position": [1540, -100],
+      "credentials": {
+        "mcpClientHttpApi": {
+          "id": "uBSIIM5BUFsEhOTn",
+          "name": "odin"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "connectionType": "http",
+        "operation": "executeTool",
+        "toolName": "notebookllm_download_content",
+        "toolParameters": "={\n  \"notebook_url\": \"{{ $('extract-notebook-url').item.json.notebook_url }}\",\n  \"content_type\": \"presentation\",\n  \"output_dir\": \"{{ $('set-params').item.json.output_dir }}\",\n  \"timeout\": 120\n}"
+      },
+      "id": "download-presentation",
+      "name": "3b. Download Presentation",
+      "type": "n8n-nodes-mcp.mcpClient",
+      "typeVersion": 1,
+      "position": [1540, 100],
+      "credentials": {
+        "mcpClientHttpApi": {
+          "id": "uBSIIM5BUFsEhOTn",
+          "name": "odin"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "presentation_path",
+              "value": "={{ $json.data.files[0].path }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-presentation-path",
+      "name": "Extract Presentation Path",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1760, 100]
+    },
+    {
+      "parameters": {
+        "connectionType": "http",
+        "operation": "executeTool",
+        "toolName": "pdf_to_images",
+        "toolParameters": "={\n  \"pdf_path\": \"{{ $json.presentation_path }}\",\n  \"output_dir\": \"{{ $('set-params').item.json.output_dir }}/images\",\n  \"dpi\": 200,\n  \"format\": \"png\"\n}"
+      },
+      "id": "convert-to-images",
+      "name": "4. Convert to Images",
+      "type": "n8n-nodes-mcp.mcpClient",
+      "typeVersion": 1,
+      "position": [1980, 100],
+      "credentials": {
+        "mcpClientHttpApi": {
+          "id": "uBSIIM5BUFsEhOTn",
+          "name": "odin"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-final",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2200, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "completed"
+            },
+            {
+              "name": "notebook_url",
+              "value": "={{ $('extract-notebook-url').item.json.notebook_url }}"
+            }
+          ],
+          "object": [
+            {
+              "name": "infographic_result",
+              "value": "={{ $('download-infographic').item.json }}"
+            },
+            {
+              "name": "images_result",
+              "value": "={{ $('convert-to-images').item.json }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "final-output",
+      "name": "Final Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2420, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "failed"
+            },
+            {
+              "name": "error",
+              "value": "Failed to add source to NotebookLLM"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "error-output",
+      "name": "Error Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1100, 200]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Parameters": {
+      "main": [
+        [
+          {
+            "node": "1. Add Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Add Source": {
+      "main": [
+        [
+          {
+            "node": "Extract Notebook URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Notebook URL": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "2a. Generate Infographic",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "2b. Generate Presentation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2a. Generate Infographic": {
+      "main": [
+        [
+          {
+            "node": "Wait for Both",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2b. Generate Presentation": {
+      "main": [
+        [
+          {
+            "node": "Wait for Both",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Wait for Both": {
+      "main": [
+        [
+          {
+            "node": "3a. Download Infographic",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "3b. Download Presentation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3a. Download Infographic": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3b. Download Presentation": {
+      "main": [
+        [
+          {
+            "node": "Extract Presentation Path",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Presentation Path": {
+      "main": [
+        [
+          {
+            "node": "4. Convert to Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Convert to Images": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Final Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "notebookllm"
+    },
+    {
+      "name": "automation"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-12-02T00:00:00.000Z",
+  "versionId": "2"
+}
