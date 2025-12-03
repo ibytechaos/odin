@@ -22,6 +22,8 @@ Tools:
 - notebookllm_generate_mindmap: Generate a mind map from sources
 - notebookllm_generate_infographic: Generate an infographic from sources
 - notebookllm_generate_presentation: Generate a presentation from sources
+- notebookllm_generate_and_download_infographic: Generate and download infographic in one operation
+- notebookllm_generate_and_download_presentation: Generate and download presentation in one operation
 - notebookllm_download_content: Download generated content
 - pdf_to_images: Convert PDF to images
 - images_to_editable_pptx: Convert slide images to editable PPTX
@@ -748,6 +750,133 @@ class NotebookLLMPlugin(DecoratorPlugin):
                 "notebook_url": notebook_url,
             }
 
+    @tool(description="Generate and download an infographic from NotebookLLM sources in one operation")
+    async def notebookllm_generate_and_download_infographic(
+        self,
+        notebook_url: Annotated[str, Field(description="Full URL of the NotebookLLM notebook")],
+        output_dir: Annotated[
+            str,
+            Field(description="Directory to save downloaded file")
+        ],
+        timeout: Annotated[
+            int,
+            Field(description="Maximum time to wait for generation and download in seconds", ge=60, le=1800)
+        ] = 600,
+        poll_interval: Annotated[
+            int,
+            Field(description="Interval between download attempts in seconds", ge=5, le=60)
+        ] = 10,
+    ) -> dict[str, Any]:
+        """Generate and download an infographic from NotebookLLM sources.
+
+        This method combines generation and download into a single operation.
+        It clicks the generate button and then polls for download availability.
+        Success is determined by successful download (if you can download, generation is complete).
+
+        Args:
+            notebook_url: Full URL of the NotebookLLM notebook
+            output_dir: Directory to save downloaded file
+            timeout: Maximum time to wait in seconds
+            poll_interval: Interval between download attempts in seconds
+
+        Returns:
+            Status with downloaded file path
+        """
+        try:
+            page = await self._get_page()
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+
+            await page.goto(notebook_url, wait_until="domcontentloaded")
+            await asyncio.sleep(2)
+
+            if not await self._wait_for_notebookllm_ready(page, timeout=30):
+                return {
+                    "success": False,
+                    "error": "NotebookLLM page did not load properly",
+                    "notebook_url": notebook_url,
+                }
+
+            # Click generate button
+            infographic_btn = await page.query_selector(
+                '.create-artifact-button-container:has-text("信息图")'
+            )
+            if not infographic_btn:
+                infographic_btn = await page.query_selector(
+                    '.create-artifact-button-container:has(mat-icon:has-text("stacked_bar_chart"))'
+                )
+            if not infographic_btn:
+                infographic_btn = await page.query_selector(
+                    '.create-artifact-button-container:has-text("Infographic")'
+                )
+
+            if not infographic_btn:
+                return {
+                    "success": False,
+                    "error": "Could not find infographic generation button",
+                    "notebook_url": notebook_url,
+                }
+
+            await infographic_btn.click()
+            await asyncio.sleep(3)
+
+            # Poll for download availability
+            start_time = time.time()
+
+            while time.time() - start_time < timeout:
+                # Check for errors
+                error = await page.query_selector(
+                    '.mat-mdc-snack-bar-container:has-text("error"), '
+                    '[role="alert"]:has-text("失败"), '
+                    '[role="alert"]:has-text("failed")'
+                )
+                if error:
+                    error_text = await error.inner_text()
+                    return {
+                        "success": False,
+                        "error": f"Generation failed: {error_text}",
+                        "notebook_url": notebook_url,
+                    }
+
+                # Try to download
+                result = await self._download_artifact(
+                    page, "stacked_bar_chart", "infographic", output_path, 30
+                )
+
+                if result:
+                    return {
+                        "success": True,
+                        "data": {
+                            "message": "Infographic generated and downloaded successfully",
+                            "notebook_url": notebook_url,
+                            "file": result,
+                            "output_dir": str(output_path),
+                        },
+                    }
+
+                # Wait before next attempt
+                await asyncio.sleep(poll_interval)
+
+            return {
+                "success": False,
+                "error": "Timeout waiting for infographic generation and download",
+                "notebook_url": notebook_url,
+            }
+
+        except ConnectionError as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "hint": "Start Chrome with: google-chrome --remote-debugging-port=9222",
+                "notebook_url": notebook_url,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "notebook_url": notebook_url,
+            }
+
     @tool(description="Generate a presentation (slides) from NotebookLLM sources")
     async def notebookllm_generate_presentation(
         self,
@@ -850,6 +979,135 @@ class NotebookLLMPlugin(DecoratorPlugin):
             return {
                 "success": False,
                 "error": "Timeout waiting for presentation generation",
+                "notebook_url": notebook_url,
+            }
+
+        except ConnectionError as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "hint": "Start Chrome with: google-chrome --remote-debugging-port=9222",
+                "notebook_url": notebook_url,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "notebook_url": notebook_url,
+            }
+
+    @tool(description="Generate and download a presentation from NotebookLLM sources in one operation")
+    async def notebookllm_generate_and_download_presentation(
+        self,
+        notebook_url: Annotated[str, Field(description="Full URL of the NotebookLLM notebook")],
+        output_dir: Annotated[
+            str,
+            Field(description="Directory to save downloaded file")
+        ],
+        timeout: Annotated[
+            int,
+            Field(description="Maximum time to wait for generation and download in seconds", ge=60, le=7200)
+        ] = 3600,
+        poll_interval: Annotated[
+            int,
+            Field(description="Interval between download attempts in seconds", ge=5, le=120)
+        ] = 30,
+    ) -> dict[str, Any]:
+        """Generate and download a presentation from NotebookLLM sources.
+
+        This method combines generation and download into a single operation.
+        It clicks the generate button and then polls for download availability.
+        Success is determined by successful download (if you can download, generation is complete).
+
+        Note: Presentation generation can take a long time (up to 1 hour).
+
+        Args:
+            notebook_url: Full URL of the NotebookLLM notebook
+            output_dir: Directory to save downloaded file
+            timeout: Maximum time to wait in seconds (default: 1 hour)
+            poll_interval: Interval between download attempts in seconds
+
+        Returns:
+            Status with downloaded file path
+        """
+        try:
+            page = await self._get_page()
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+
+            await page.goto(notebook_url, wait_until="domcontentloaded")
+            await asyncio.sleep(2)
+
+            if not await self._wait_for_notebookllm_ready(page, timeout=30):
+                return {
+                    "success": False,
+                    "error": "NotebookLLM page did not load properly",
+                    "notebook_url": notebook_url,
+                }
+
+            # Click generate button
+            presentation_btn = await page.query_selector(
+                '.create-artifact-button-container:has-text("演示文稿")'
+            )
+            if not presentation_btn:
+                presentation_btn = await page.query_selector(
+                    '.create-artifact-button-container:has(mat-icon:has-text("tablet"))'
+                )
+            if not presentation_btn:
+                presentation_btn = await page.query_selector(
+                    '.create-artifact-button-container:has-text("Presentation")'
+                )
+
+            if not presentation_btn:
+                return {
+                    "success": False,
+                    "error": "Could not find presentation generation button",
+                    "notebook_url": notebook_url,
+                }
+
+            await presentation_btn.click()
+            await asyncio.sleep(3)
+
+            # Poll for download availability
+            start_time = time.time()
+
+            while time.time() - start_time < timeout:
+                # Check for errors
+                error = await page.query_selector(
+                    '.mat-mdc-snack-bar-container:has-text("error"), '
+                    '[role="alert"]:has-text("失败"), '
+                    '[role="alert"]:has-text("failed")'
+                )
+                if error:
+                    error_text = await error.inner_text()
+                    return {
+                        "success": False,
+                        "error": f"Generation failed: {error_text}",
+                        "notebook_url": notebook_url,
+                    }
+
+                # Try to download
+                result = await self._download_artifact(
+                    page, "tablet", "presentation", output_path, 60
+                )
+
+                if result:
+                    return {
+                        "success": True,
+                        "data": {
+                            "message": "Presentation generated and downloaded successfully",
+                            "notebook_url": notebook_url,
+                            "file": result,
+                            "output_dir": str(output_path),
+                        },
+                    }
+
+                # Wait before next attempt
+                await asyncio.sleep(poll_interval)
+
+            return {
+                "success": False,
+                "error": "Timeout waiting for presentation generation and download",
                 "notebook_url": notebook_url,
             }
 

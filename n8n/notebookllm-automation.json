@@ -3,46 +3,30 @@
   "nodes": [
     {
       "parameters": {},
-      "id": "trigger",
+      "id": "c4294244-8615-4eb1-927b-2cef59f020e2",
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [0, 0]
-    },
-    {
-      "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "source_url",
-              "value": "={{ $json.source_url || 'https://example.com/article' }}"
-            },
-            {
-              "name": "output_dir",
-              "value": "={{ $json.output_dir || '/tmp/notebookllm' }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "set-params",
-      "name": "Set Parameters",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [220, 0]
+      "position": [
+        -1680,
+        160
+      ]
     },
     {
       "parameters": {
         "connectionType": "http",
         "operation": "executeTool",
         "toolName": "notebookllm_add_source",
-        "toolParameters": "={\n  \"source_url\": \"{{ $json.source_url }}\",\n  \"wait_for_processing\": true,\n  \"timeout\": 120\n}"
+        "toolParameters": "={\n  \"source_url\": \"https://github.com/coder/agentapi\",\n  \"wait_for_processing\": true,\n  \"timeout\": 120\n}"
       },
-      "id": "add-source",
+      "id": "1d9cb8a5-c3cf-403f-8ba8-640492e2920e",
       "name": "1. Add Source",
       "type": "n8n-nodes-mcp.mcpClient",
       "typeVersion": 1,
-      "position": [440, 0],
+      "position": [
+        -1360,
+        160
+      ],
       "credentials": {
         "mcpClientHttpApi": {
           "id": "uBSIIM5BUFsEhOTn",
@@ -52,25 +36,17 @@
     },
     {
       "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "notebook_url",
-              "value": "={{ $json.data.notebook_url }}"
-            },
-            {
-              "name": "success",
-              "value": "={{ $json.success }}"
-            }
-          ]
-        },
-        "options": {}
+        "jsCode": "// Extract notebook_url from MCP response\nconst mcpResponse = $input.first().json.result.content[0].text;\nlet data = {};\n\ntry {\n  let content = mcpResponse;\n  // Remove markdown code block wrapper if present\n  content = content.replace(/^```json\\s*\\n?/, '').replace(/\\n?```\\s*$/, '');\n  data = JSON.parse(content);\n} catch (e) {\n  console.error('Failed to parse MCP response:', e);\n  console.error('Raw content:', mcpResponse);\n  return { json: { error: 'Failed to parse response' } };\n}\n\nif (!data.success || !data.data || !data.data.notebook_url) {\n  return { json: { error: data.error || 'No notebook_url in response' } };\n}\n\n// Generate output directory based on notebook URL hash\nconst crypto = require('crypto');\nconst notebookUrl = data.data.notebook_url;\nconst hash = crypto.createHash('sha256').update(notebookUrl).digest('hex').substring(0, 12);\nconst outputDir = `/data/notebookllm/${hash}`;\n\nreturn {\n  json: {\n    notebook_url: notebookUrl,\n    output_dir: outputDir,\n    created_new_notebook: data.data.created_new_notebook\n  }\n};\n"
       },
-      "id": "extract-notebook-url",
-      "name": "Extract Notebook URL",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [660, 0]
+      "typeVersion": 2,
+      "name": "Extract Notebook Info",
+      "id": "6c7153c3-89c1-44bf-86b9-79a93adf0941",
+      "position": [
+        -1104,
+        160
+      ],
+      "type": "n8n-nodes-base.code",
+      "notes": "Extract notebook_url and generate output_dir"
     },
     {
       "parameters": {
@@ -78,16 +54,18 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "strict",
+            "version": 1
           },
           "conditions": [
             {
               "id": "check-success",
-              "leftValue": "={{ $json.success }}",
+              "leftValue": "={{ $json.notebook_url }}",
               "rightValue": true,
               "operator": {
-                "type": "boolean",
-                "operation": "equals"
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
               }
             }
           ],
@@ -95,24 +73,30 @@
         },
         "options": {}
       },
-      "id": "check-add-source",
+      "id": "b9a9423e-7bbf-4599-933c-41878de106d5",
       "name": "Check Success",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.1,
-      "position": [880, 0]
+      "position": [
+        -848,
+        160
+      ]
     },
     {
       "parameters": {
         "connectionType": "http",
         "operation": "executeTool",
-        "toolName": "notebookllm_generate_infographic",
-        "toolParameters": "={\n  \"notebook_url\": \"{{ $('extract-notebook-url').item.json.notebook_url }}\",\n  \"timeout\": 180\n}"
+        "toolName": "notebookllm_generate_and_download_infographic",
+        "toolParameters": "={\n  \"notebook_url\": \"{{ $json.notebook_url }}\",\n  \"output_dir\": \"{{ $json.output_dir }}\",\n  \"timeout\": 1800,\n  \"poll_interval\": 15\n}"
       },
-      "id": "generate-infographic",
-      "name": "2a. Generate Infographic",
+      "id": "68c0b9b9-afb2-4b88-8c11-7407077beedb",
+      "name": "2a. Generate & Download Infographic",
       "type": "n8n-nodes-mcp.mcpClient",
       "typeVersion": 1,
-      "position": [1100, -100],
+      "position": [
+        -352,
+        0
+      ],
       "credentials": {
         "mcpClientHttpApi": {
           "id": "uBSIIM5BUFsEhOTn",
@@ -124,45 +108,17 @@
       "parameters": {
         "connectionType": "http",
         "operation": "executeTool",
-        "toolName": "notebookllm_generate_presentation",
-        "toolParameters": "={\n  \"notebook_url\": \"{{ $('extract-notebook-url').item.json.notebook_url }}\",\n  \"timeout\": 3600\n}"
+        "toolName": "notebookllm_generate_and_download_presentation",
+        "toolParameters": "={\n  \"notebook_url\": \"{{ $json.notebook_url }}\",\n  \"output_dir\": \"{{ $json.output_dir }}\",\n  \"timeout\": 3600,\n  \"poll_interval\": 30\n}"
       },
-      "id": "generate-presentation",
-      "name": "2b. Generate Presentation",
+      "id": "5a8e2376-266c-4da9-9070-b518225204d2",
+      "name": "2b. Generate & Download Presentation",
       "type": "n8n-nodes-mcp.mcpClient",
       "typeVersion": 1,
-      "position": [1100, 100],
-      "credentials": {
-        "mcpClientHttpApi": {
-          "id": "uBSIIM5BUFsEhOTn",
-          "name": "odin"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "mode": "combine",
-        "combineBy": "combineAll",
-        "options": {}
-      },
-      "id": "merge-generation",
-      "name": "Wait for Both",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
-      "position": [1320, 0]
-    },
-    {
-      "parameters": {
-        "connectionType": "http",
-        "operation": "executeTool",
-        "toolName": "notebookllm_download_content",
-        "toolParameters": "={\n  \"notebook_url\": \"{{ $('extract-notebook-url').item.json.notebook_url }}\",\n  \"content_type\": \"infographic\",\n  \"output_dir\": \"{{ $('set-params').item.json.output_dir }}\",\n  \"timeout\": 120\n}"
-      },
-      "id": "download-infographic",
-      "name": "3a. Download Infographic",
-      "type": "n8n-nodes-mcp.mcpClient",
-      "typeVersion": 1,
-      "position": [1540, -100],
+      "position": [
+        -352,
+        176
+      ],
       "credentials": {
         "mcpClientHttpApi": {
           "id": "uBSIIM5BUFsEhOTn",
@@ -174,14 +130,17 @@
       "parameters": {
         "connectionType": "http",
         "operation": "executeTool",
-        "toolName": "notebookllm_download_content",
-        "toolParameters": "={\n  \"notebook_url\": \"{{ $('extract-notebook-url').item.json.notebook_url }}\",\n  \"content_type\": \"presentation\",\n  \"output_dir\": \"{{ $('set-params').item.json.output_dir }}\",\n  \"timeout\": 120\n}"
+        "toolName": "notebookllm_get_notebook_summary",
+        "toolParameters": "={\n  \"notebook_url\": \"{{ $json.notebook_url }}\",\n  \"timeout\": 30\n}"
       },
-      "id": "download-presentation",
-      "name": "3b. Download Presentation",
+      "id": "d8f785ba-b3e9-4f36-be09-c275f35d990c",
+      "name": "2c. Get Summary",
       "type": "n8n-nodes-mcp.mcpClient",
       "typeVersion": 1,
-      "position": [1540, 100],
+      "position": [
+        -352,
+        352
+      ],
       "credentials": {
         "mcpClientHttpApi": {
           "id": "uBSIIM5BUFsEhOTn",
@@ -191,34 +150,32 @@
     },
     {
       "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "presentation_path",
-              "value": "={{ $json.data.files[0].path }}"
-            }
-          ]
-        },
-        "options": {}
+        "jsCode": "// Extract presentation file path from MCP response\nconst mcpResponse = $input.first().json.result.content[0].text;\nlet data = {};\n\ntry {\n  let content = mcpResponse;\n  content = content.replace(/^```json\\s*\\n?/, '').replace(/\\n?```\\s*$/, '');\n  data = JSON.parse(content);\n} catch (e) {\n  console.error('Failed to parse MCP response:', e);\n  return { json: { error: 'Failed to parse response' } };\n}\n\nif (!data.success || !data.data || !data.data.file) {\n  return { json: { error: data.error || 'No file in response' } };\n}\n\nconst filePath = data.data.file.path;\nconst outputDir = data.data.output_dir;\n\nreturn {\n  json: {\n    presentation_path: filePath,\n    output_dir: outputDir,\n    notebook_url: data.data.notebook_url\n  }\n};\n"
       },
-      "id": "extract-presentation-path",
+      "id": "18305336-3a50-4294-9dc7-cf0c38b5b891",
       "name": "Extract Presentation Path",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [1760, 100]
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -48,
+        176
+      ]
     },
     {
       "parameters": {
         "connectionType": "http",
         "operation": "executeTool",
         "toolName": "pdf_to_images",
-        "toolParameters": "={\n  \"pdf_path\": \"{{ $json.presentation_path }}\",\n  \"output_dir\": \"{{ $('set-params').item.json.output_dir }}/images\",\n  \"dpi\": 200,\n  \"format\": \"png\"\n}"
+        "toolParameters": "={\n  \"pdf_path\": \"{{ $json.presentation_path }}\",\n  \"output_dir\": \"{{ $json.output_dir }}/images\",\n  \"dpi\": 200,\n  \"format\": \"png\"\n}"
       },
-      "id": "convert-to-images",
-      "name": "4. Convert to Images",
+      "id": "b4b723a0-3902-46fd-9727-a506001dc89a",
+      "name": "3. Convert to Images",
       "type": "n8n-nodes-mcp.mcpClient",
       "typeVersion": 1,
-      "position": [1980, 100],
+      "position": [
+        208,
+        176
+      ],
       "credentials": {
         "mcpClientHttpApi": {
           "id": "uBSIIM5BUFsEhOTn",
@@ -228,84 +185,34 @@
     },
     {
       "parameters": {
-        "mode": "combine",
-        "combineBy": "combineAll",
-        "options": {}
+        "numberInputs": 3
       },
-      "id": "merge-final",
-      "name": "Merge Results",
       "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
-      "position": [2200, 0]
+      "typeVersion": 3.2,
+      "position": [
+        464,
+        176
+      ],
+      "id": "2cf3769d-b3be-4904-81ae-7e9f9400ccd0",
+      "name": "Merge Results"
     },
     {
       "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "status",
-              "value": "completed"
-            },
-            {
-              "name": "notebook_url",
-              "value": "={{ $('extract-notebook-url').item.json.notebook_url }}"
-            }
-          ],
-          "object": [
-            {
-              "name": "infographic_result",
-              "value": "={{ $('download-infographic').item.json }}"
-            },
-            {
-              "name": "images_result",
-              "value": "={{ $('convert-to-images').item.json }}"
-            }
-          ]
-        },
-        "options": {}
+        "jsCode": "// Combine all results\nconst items = $input.all();\nconst result = {\n  infographic: null,\n  presentation: null,\n  images: [],\n  summary: null\n};\n\nfor (const item of items) {\n  const json = item.json;\n  \n  // Try to parse MCP response if present\n  if (json.result && json.result.content) {\n    try {\n      let content = json.result.content[0].text;\n      content = content.replace(/^```json\\s*\\n?/, '').replace(/\\n?```\\s*$/, '');\n      const data = JSON.parse(content);\n      \n      if (data.data) {\n        // Check what type of data this is\n        if (data.data.file && data.data.file.type === 'infographic') {\n          result.infographic = data.data.file.path;\n        } else if (data.data.images) {\n          result.images = data.data.images.map(img => img.path);\n        } else if (data.data.sources) {\n          result.summary = data.data;\n        }\n      }\n    } catch (e) {\n      console.error('Failed to parse item:', e);\n    }\n  }\n  \n  // Also check for already extracted data\n  if (json.presentation_path) {\n    result.presentation = json.presentation_path;\n  }\n}\n\nreturn {\n  json: {\n    success: true,\n    ...result\n  }\n};\n"
       },
-      "id": "final-output",
+      "id": "52ce4377-ff6d-48f8-8566-6a83a2cc54a9",
       "name": "Final Output",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [2420, 0]
-    },
-    {
-      "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "status",
-              "value": "failed"
-            },
-            {
-              "name": "error",
-              "value": "Failed to add source to NotebookLLM"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "error-output",
-      "name": "Error Output",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [1100, 200]
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        176
+      ]
     }
   ],
+  "pinData": {},
   "connections": {
     "Manual Trigger": {
-      "main": [
-        [
-          {
-            "node": "Set Parameters",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Set Parameters": {
       "main": [
         [
           {
@@ -320,14 +227,14 @@
       "main": [
         [
           {
-            "node": "Extract Notebook URL",
+            "node": "Extract Notebook Info",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Extract Notebook URL": {
+    "Extract Notebook Info": {
       "main": [
         [
           {
@@ -342,64 +249,25 @@
       "main": [
         [
           {
-            "node": "2a. Generate Infographic",
+            "node": "2a. Generate & Download Infographic",
             "type": "main",
             "index": 0
           },
           {
-            "node": "2b. Generate Presentation",
+            "node": "2b. Generate & Download Presentation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "2c. Get Summary",
             "type": "main",
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Error Output",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
-    "2a. Generate Infographic": {
-      "main": [
-        [
-          {
-            "node": "Wait for Both",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "2b. Generate Presentation": {
-      "main": [
-        [
-          {
-            "node": "Wait for Both",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Wait for Both": {
-      "main": [
-        [
-          {
-            "node": "3a. Download Infographic",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "3b. Download Presentation",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "3a. Download Infographic": {
+    "2a. Generate & Download Infographic": {
       "main": [
         [
           {
@@ -410,7 +278,7 @@
         ]
       ]
     },
-    "3b. Download Presentation": {
+    "2b. Generate & Download Presentation": {
       "main": [
         [
           {
@@ -421,18 +289,29 @@
         ]
       ]
     },
+    "2c. Get Summary": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
     "Extract Presentation Path": {
       "main": [
         [
           {
-            "node": "4. Convert to Images",
+            "node": "3. Convert to Images",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "4. Convert to Images": {
+    "3. Convert to Images": {
       "main": [
         [
           {
@@ -455,19 +334,27 @@
       ]
     }
   },
+  "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "staticData": null,
+  "versionId": "b4e327bd-4317-43b5-9fd8-b3cd07bf0fd1",
+  "meta": {
+    "instanceId": "327fc6597e6a5988c76a0d3c6ca06a2fc1484f56969e0755413a8b90ca4b89ff"
+  },
+  "id": "Znn3RvzF5YNlgShK",
   "tags": [
     {
+      "updatedAt": "2025-12-02T13:26:59.448Z",
+      "createdAt": "2025-12-02T13:26:59.448Z",
+      "id": "5TlRIRYuBMrhF32B",
       "name": "notebookllm"
     },
     {
+      "updatedAt": "2025-12-02T13:26:59.442Z",
+      "createdAt": "2025-12-02T13:26:59.442Z",
+      "id": "ozzyCeXTKGfSXxee",
       "name": "automation"
     }
-  ],
-  "triggerCount": 1,
-  "updatedAt": "2025-12-02T00:00:00.000Z",
-  "versionId": "2"
+  ]
 }
