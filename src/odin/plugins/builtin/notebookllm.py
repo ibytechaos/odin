@@ -18,6 +18,7 @@ Requirements:
 
 Tools:
 - notebookllm_add_source: Add a web source (URL) to a notebook
+- notebookllm_get_notebook_summary: Get summary info of a notebook (sources, artifacts)
 - notebookllm_generate_mindmap: Generate a mind map from sources
 - notebookllm_generate_infographic: Generate an infographic from sources
 - notebookllm_generate_presentation: Generate a presentation from sources
@@ -326,6 +327,177 @@ class NotebookLLMPlugin(DecoratorPlugin):
                     "message": f"Successfully added source: {source_url}",
                     "notebook_url": final_notebook_url,
                     "created_new_notebook": created_new_notebook,
+                },
+            }
+
+        except ConnectionError as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "hint": "Start Chrome with: google-chrome --remote-debugging-port=9222",
+                "notebook_url": notebook_url,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "notebook_url": notebook_url,
+            }
+
+    @tool(description="Get summary information of a NotebookLLM notebook")
+    async def notebookllm_get_notebook_summary(
+        self,
+        notebook_url: Annotated[str, Field(description="Full URL of the NotebookLLM notebook")],
+        timeout: Annotated[
+            int,
+            Field(description="Maximum time to wait in seconds", ge=10, le=120)
+        ] = 30,
+    ) -> dict[str, Any]:
+        """Get summary information of a NotebookLLM notebook.
+
+        Returns information about sources, generated artifacts (mind maps,
+        infographics, presentations), and notebook metadata.
+
+        Args:
+            notebook_url: Full URL of the NotebookLLM notebook
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            Notebook summary including sources and artifacts
+        """
+        try:
+            page = await self._get_page()
+
+            await page.goto(notebook_url, wait_until="domcontentloaded")
+            await asyncio.sleep(3)
+
+            if "accounts.google.com" in page.url:
+                return {
+                    "success": False,
+                    "error": "Not logged in to Google. Please login manually in the browser window.",
+                    "action_required": "login",
+                    "notebook_url": notebook_url,
+                }
+
+            if not await self._wait_for_notebookllm_ready(page, timeout=timeout):
+                return {
+                    "success": False,
+                    "error": "NotebookLLM page did not load properly",
+                    "notebook_url": notebook_url,
+                }
+
+            # Extract notebook information using JavaScript
+            notebook_info = await page.evaluate("""
+                () => {
+                    const result = {
+                        title: '',
+                        sources: [],
+                        artifacts: {
+                            mindmaps: 0,
+                            infographics: 0,
+                            presentations: 0,
+                            audios: 0,
+                            total: 0
+                        },
+                        notes: []
+                    };
+
+                    // Get notebook title
+                    const titleEl = document.querySelector(
+                        '.notebook-title, [class*="notebook-name"], h1'
+                    );
+                    if (titleEl) {
+                        result.title = titleEl.textContent?.trim() || '';
+                    }
+
+                    // Get sources from source panel
+                    const sourceItems = document.querySelectorAll(
+                        '.source-panel .source-item, ' +
+                        '[class*="source-list"] [class*="source-item"], ' +
+                        '.sources-container [class*="item"]'
+                    );
+                    sourceItems.forEach(item => {
+                        const titleEl = item.querySelector(
+                            '[class*="title"], [class*="name"], .source-title'
+                        );
+                        const typeEl = item.querySelector(
+                            '[class*="type"], mat-icon'
+                        );
+                        result.sources.push({
+                            title: titleEl?.textContent?.trim() || 'Untitled',
+                            type: typeEl?.textContent?.trim() || 'unknown'
+                        });
+                    });
+
+                    // Count artifacts in studio panel
+                    const studioPanel = document.querySelector('.studio-panel');
+                    if (studioPanel) {
+                        // Mind maps (flowchart icon)
+                        const mindmaps = studioPanel.querySelectorAll(
+                            'mat-icon.artifact-icon:has-text("flowchart"), ' +
+                            '[class*="artifact"]:has(mat-icon:has-text("flowchart"))'
+                        );
+                        result.artifacts.mindmaps = mindmaps.length;
+
+                        // Infographics (stacked_bar_chart icon)
+                        const infographics = studioPanel.querySelectorAll(
+                            'mat-icon.artifact-icon:has-text("stacked_bar_chart"), ' +
+                            '[class*="artifact"]:has(mat-icon:has-text("stacked_bar_chart"))'
+                        );
+                        result.artifacts.infographics = infographics.length;
+
+                        // Presentations (tablet icon)
+                        const presentations = studioPanel.querySelectorAll(
+                            'mat-icon.artifact-icon:has-text("tablet"), ' +
+                            '[class*="artifact"]:has(mat-icon:has-text("tablet"))'
+                        );
+                        result.artifacts.presentations = presentations.length;
+
+                        // Audio overviews (headphones icon)
+                        const audios = studioPanel.querySelectorAll(
+                            'mat-icon.artifact-icon:has-text("headphones"), ' +
+                            '[class*="artifact"]:has(mat-icon:has-text("headphones"))'
+                        );
+                        result.artifacts.audios = audios.length;
+
+                        result.artifacts.total = (
+                            result.artifacts.mindmaps +
+                            result.artifacts.infographics +
+                            result.artifacts.presentations +
+                            result.artifacts.audios
+                        );
+                    }
+
+                    // Get notes/saved notes
+                    const noteItems = document.querySelectorAll(
+                        '.notes-panel .note-item, ' +
+                        '[class*="note-list"] [class*="note-item"]'
+                    );
+                    noteItems.forEach(item => {
+                        const content = item.querySelector(
+                            '[class*="content"], [class*="text"]'
+                        );
+                        if (content) {
+                            result.notes.push({
+                                content: content.textContent?.trim().substring(0, 200) || ''
+                            });
+                        }
+                    });
+
+                    return result;
+                }
+            """)
+
+            return {
+                "success": True,
+                "data": {
+                    "notebook_url": notebook_url,
+                    "title": notebook_info.get("title", ""),
+                    "sources_count": len(notebook_info.get("sources", [])),
+                    "sources": notebook_info.get("sources", []),
+                    "artifacts": notebook_info.get("artifacts", {}),
+                    "notes_count": len(notebook_info.get("notes", [])),
+                    "notes": notebook_info.get("notes", []),
                 },
             }
 

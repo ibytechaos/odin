@@ -291,6 +291,10 @@ class XiaohongshuPlugin(DecoratorPlugin):
             list[str] | None,
             Field(description="List of images in base64 format")
         ] = None,
+        images_folder: Annotated[
+            str | None,
+            Field(description="Local folder containing PNG images to upload (only .png files)")
+        ] = None,
         tags: Annotated[
             list[str] | None,
             Field(description="List of tags/hashtags for the post")
@@ -302,11 +306,20 @@ class XiaohongshuPlugin(DecoratorPlugin):
     ) -> dict[str, Any]:
         """Publish image content to Xiaohongshu.
 
-        Supports both file paths and base64 encoded images.
+        Supports file paths, base64 encoded images, or a folder of PNG images.
+        When using images_folder, only .png files will be selected.
         """
         try:
             # Prepare images
             image_paths = []
+
+            # Handle folder with PNG images
+            if images_folder:
+                folder_path = Path(images_folder)
+                if folder_path.exists() and folder_path.is_dir():
+                    # Get all PNG files, sorted by name for consistent ordering
+                    png_files = sorted(folder_path.glob("*.png"))
+                    image_paths.extend([str(f) for f in png_files])
 
             # Handle file path images
             if images:
