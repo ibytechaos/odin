@@ -29,7 +29,7 @@ COPY src/ ./src/
 
 # Install dependencies and the package
 # Using explicit path in case ENV doesn't take effect in same layer
-RUN /root/.local/bin/uv sync --frozen --no-dev --extra builtin-plugins
+RUN /root/.local/bin/uv sync --all-extras
 
 # Note: Playwright browsers are NOT installed in the container
 # We use remote Chrome debugging via CHROME_DEBUG_HOST instead
