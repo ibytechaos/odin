@@ -389,7 +389,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
                 }
 
             # Wait for content to load
-            await asyncio.sleep(3)
+            await asyncio.sleep(30)
 
             # Extract notebook information using JavaScript
             notebook_info = await page.evaluate("""
