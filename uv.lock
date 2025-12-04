@@ -1374,6 +1374,7 @@ all = [
 ]
 builtin-plugins = [
     { name = "aiohttp" },
+    { name = "pdf2image" },
     { name = "playwright" },
 ]
 copilotkit = [
@@ -1447,6 +1448,7 @@ requires-dist = [
     { name = "opentelemetry-exporter-prometheus", specifier = ">=0.54b0" },
     { name = "opentelemetry-instrumentation", specifier = ">=0.54b0" },
     { name = "opentelemetry-sdk", specifier = ">=1.33.0" },
+    { name = "pdf2image", marker = "extra == 'builtin-plugins'", specifier = ">=1.17.0" },
     { name = "pdf2image", marker = "extra == 'notebookllm'", specifier = ">=1.17.0" },
     { name = "playwright", marker = "extra == 'builtin-plugins'", specifier = ">=1.52.0" },
     { name = "playwright", marker = "extra == 'notebookllm'", specifier = ">=1.52.0" },

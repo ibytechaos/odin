@@ -370,8 +370,13 @@ class NotebookLLMPlugin(DecoratorPlugin):
         try:
             page = await self._get_page()
 
-            await page.goto(notebook_url, wait_until="domcontentloaded")
-            await asyncio.sleep(3)
+            # Only navigate if not already on the target notebook
+            current_url = page.url
+            need_navigate = notebook_url not in current_url
+
+            if need_navigate:
+                await page.goto(notebook_url, wait_until="domcontentloaded")
+                await asyncio.sleep(3)
 
             if "accounts.google.com" in page.url:
                 return {
@@ -388,141 +393,159 @@ class NotebookLLMPlugin(DecoratorPlugin):
                     "notebook_url": notebook_url,
                 }
 
-            # Wait for content to load
-            await asyncio.sleep(30)
+            # Wait for summary content to load (it loads asynchronously)
+            # Poll for up to 10 seconds for summary to appear
+            if need_navigate:
+                start_time = time.time()
+                while time.time() - start_time < 10:
+                    has_summary = await page.evaluate("""
+                        () => {
+                            const el = document.querySelector('.notebook-summary, .summary-content');
+                            return el && el.textContent?.trim().length > 10;
+                        }
+                    """)
+                    if has_summary:
+                        break
+                    await asyncio.sleep(0.5)
 
-            # Extract notebook information using JavaScript
+            # Additional wait for other content
+            await asyncio.sleep(1)
+
+            # Extract all info using JavaScript for better reliability
             notebook_info = await page.evaluate("""
                 () => {
                     const result = {
                         title: '',
+                        summary: '',
                         sources: [],
                         artifacts: {
                             mindmaps: 0,
                             infographics: 0,
                             presentations: 0,
                             audios: 0,
-                            total: 0
+                            videos: 0,
+                            briefings: 0,
+                            flashcards: 0,
+                            quizzes: 0,
+                            total: 0,
                         },
-                        notes: []
+                        suggestedQuestions: [],
                     };
 
-                    // Helper function to count mat-icons with specific text content
-                    const countIconsByText = (container, iconText) => {
-                        if (!container) return 0;
-                        const icons = container.querySelectorAll('mat-icon');
-                        let count = 0;
-                        icons.forEach(icon => {
-                            if (icon.textContent?.trim() === iconText) {
-                                count++;
-                            }
-                        });
-                        return count;
-                    };
-
-                    // Get notebook title - try multiple selectors
-                    const titleSelectors = [
-                        '.notebook-title',
-                        '[class*="notebook-name"]',
-                        'h1',
-                        '[class*="title"]'
-                    ];
-                    for (const sel of titleSelectors) {
-                        const el = document.querySelector(sel);
-                        if (el && el.textContent?.trim()) {
-                            result.title = el.textContent.trim();
-                            break;
-                        }
+                    // Get title from input.title-input
+                    const titleInput = document.querySelector('input.title-input');
+                    if (titleInput) {
+                        result.title = titleInput.value || '';
                     }
 
-                    // Get sources from source panel - try multiple approaches
-                    const sourcePanelSelectors = [
-                        '.source-panel .source-item',
-                        '[class*="source-list"] [class*="source-item"]',
-                        '.sources-container [class*="item"]',
-                        '[class*="source"] [class*="item"]'
-                    ];
-                    let sourceItems = [];
-                    for (const sel of sourcePanelSelectors) {
-                        const items = document.querySelectorAll(sel);
-                        if (items.length > 0) {
-                            sourceItems = items;
-                            break;
-                        }
+                    // Get notebook summary (AI-generated summary of all sources)
+                    const summaryEl = document.querySelector('.notebook-summary, .summary-content');
+                    if (summaryEl) {
+                        result.summary = summaryEl.textContent?.trim() || '';
                     }
-                    sourceItems.forEach(item => {
-                        const titleEl = item.querySelector(
-                            '[class*="title"], [class*="name"], .source-title'
-                        );
-                        const typeEl = item.querySelector('mat-icon');
-                        result.sources.push({
-                            title: titleEl?.textContent?.trim() || 'Untitled',
-                            type: typeEl?.textContent?.trim() || 'unknown'
-                        });
+
+                    // Get suggested questions from the chat panel
+                    const questionEls = document.querySelectorAll('.content.fade-end, [class*="suggested-question"]');
+                    questionEls.forEach(el => {
+                        const text = el.textContent?.trim();
+                        if (text && text.includes('？') || text && text.includes('?')) {
+                            // Split by question marks to get individual questions
+                            const questions = text.split(/[？?]/).filter(q => q.trim().length > 5);
+                            questions.forEach(q => {
+                                const cleaned = q.trim();
+                                if (cleaned && !result.suggestedQuestions.includes(cleaned)) {
+                                    result.suggestedQuestions.push(cleaned);
+                                }
+                            });
+                        }
                     });
 
-                    // Count artifacts - look for mat-icons with specific text
-                    // Try studio panel first, then look in other common containers
-                    const artifactContainers = [
-                        document.querySelector('.studio-panel'),
-                        document.querySelector('[class*="studio"]'),
-                        document.querySelector('[class*="artifact"]'),
-                        document.body
-                    ];
+                    // Get sources from source-panel
+                    // Sources have source-title elements with the title text
+                    const sourcePanel = document.querySelector('section.source-panel, .source-panel');
+                    if (sourcePanel) {
+                        const processedTitles = new Set();
 
-                    let artifactContainer = null;
-                    for (const container of artifactContainers) {
-                        if (container) {
-                            artifactContainer = container;
-                            break;
-                        }
+                        // Find all source-title elements (the actual source names)
+                        const sourceTitles = sourcePanel.querySelectorAll('[class*="source-title"]');
+                        sourceTitles.forEach(titleEl => {
+                            const title = titleEl.textContent?.trim() || '';
+
+                            // Skip empty and duplicates
+                            if (title && !processedTitles.has(title)) {
+                                processedTitles.add(title);
+
+                                // Find parent container to get the source type icon
+                                // Go up to single-source-container or source-item-menu
+                                let container = titleEl.closest('[class*="single-source-container"]');
+                                if (!container) {
+                                    container = titleEl.closest('[class*="source-item-menu"]');
+                                }
+                                if (!container) {
+                                    container = titleEl.parentElement?.parentElement;
+                                }
+
+                                let sourceType = 'unknown';
+                                if (container) {
+                                    const icon = container.querySelector('mat-icon[class*="source-item-source-icon"]');
+                                    if (icon) {
+                                        sourceType = icon.textContent?.trim() || 'unknown';
+                                    }
+                                }
+
+                                result.sources.push({
+                                    title: title,
+                                    type: sourceType,
+                                });
+                            }
+                        });
                     }
 
-                    if (artifactContainer) {
-                        // Mind maps (flowchart icon)
-                        result.artifacts.mindmaps = countIconsByText(artifactContainer, 'flowchart');
+                    // Count artifacts from studio-panel
+                    // Artifact buttons have class containing "artifact-button"
+                    // with mat-icon.artifact-icon inside
+                    const studioPanel = document.querySelector('section.studio-panel, .studio-panel');
+                    if (studioPanel) {
+                        // Map icon text to artifact type
+                        const iconToType = {
+                            'flowchart': 'mindmaps',
+                            'stacked_bar_chart': 'infographics',
+                            'tablet': 'presentations',
+                            'audio_magic_eraser': 'audios',
+                            'headphones': 'audios',
+                            'subscriptions': 'videos',
+                            'auto_tab_group': 'briefings',
+                            'cards_star': 'flashcards',
+                            'quiz': 'quizzes',
+                        };
 
-                        // Infographics (stacked_bar_chart icon)
-                        result.artifacts.infographics = countIconsByText(artifactContainer, 'stacked_bar_chart');
+                        // Find artifact buttons - they contain mat-icon.artifact-icon
+                        const artifactButtons = studioPanel.querySelectorAll(
+                            'button[class*="artifact-button"]'
+                        );
 
-                        // Presentations (tablet icon)
-                        result.artifacts.presentations = countIconsByText(artifactContainer, 'tablet');
-
-                        // Audio overviews (headphones icon)
-                        result.artifacts.audios = countIconsByText(artifactContainer, 'headphones');
+                        artifactButtons.forEach(btn => {
+                            const icon = btn.querySelector('mat-icon.artifact-icon');
+                            if (icon) {
+                                const iconText = icon.textContent?.trim();
+                                const artifactType = iconToType[iconText];
+                                if (artifactType && result.artifacts.hasOwnProperty(artifactType)) {
+                                    result.artifacts[artifactType]++;
+                                }
+                            }
+                        });
 
                         result.artifacts.total = (
                             result.artifacts.mindmaps +
                             result.artifacts.infographics +
                             result.artifacts.presentations +
-                            result.artifacts.audios
+                            result.artifacts.audios +
+                            result.artifacts.videos +
+                            result.artifacts.briefings +
+                            result.artifacts.flashcards +
+                            result.artifacts.quizzes
                         );
                     }
-
-                    // Get notes/saved notes
-                    const noteSelectors = [
-                        '.notes-panel .note-item',
-                        '[class*="note-list"] [class*="note-item"]',
-                        '[class*="notes"] [class*="item"]'
-                    ];
-                    let noteItems = [];
-                    for (const sel of noteSelectors) {
-                        const items = document.querySelectorAll(sel);
-                        if (items.length > 0) {
-                            noteItems = items;
-                            break;
-                        }
-                    }
-                    noteItems.forEach(item => {
-                        const content = item.querySelector(
-                            '[class*="content"], [class*="text"]'
-                        );
-                        if (content) {
-                            result.notes.push({
-                                content: content.textContent?.trim().substring(0, 200) || ''
-                            });
-                        }
-                    });
 
                     return result;
                 }
@@ -533,11 +556,11 @@ class NotebookLLMPlugin(DecoratorPlugin):
                 "data": {
                     "notebook_url": notebook_url,
                     "title": notebook_info.get("title", ""),
+                    "summary": notebook_info.get("summary", ""),
                     "sources_count": len(notebook_info.get("sources", [])),
                     "sources": notebook_info.get("sources", []),
                     "artifacts": notebook_info.get("artifacts", {}),
-                    "notes_count": len(notebook_info.get("notes", [])),
-                    "notes": notebook_info.get("notes", []),
+                    "suggested_questions": notebook_info.get("suggestedQuestions", []),
                 },
             }
 
