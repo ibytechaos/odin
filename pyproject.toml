@@ -101,6 +101,7 @@ notebookllm = [
 builtin-plugins = [
     "aiohttp>=3.12.6",
     "playwright>=1.52.0",
+    "pdf2image>=1.17.0",
 ]
 
 # PPT conversion tools (OCR + image processing)
