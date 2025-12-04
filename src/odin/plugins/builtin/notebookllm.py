@@ -388,6 +388,9 @@ class NotebookLLMPlugin(DecoratorPlugin):
                     "notebook_url": notebook_url,
                 }
 
+            # Wait for content to load
+            await asyncio.sleep(3)
+
             # Extract notebook information using JavaScript
             notebook_info = await page.evaluate("""
                 () => {
@@ -404,63 +407,89 @@ class NotebookLLMPlugin(DecoratorPlugin):
                         notes: []
                     };
 
-                    // Get notebook title
-                    const titleEl = document.querySelector(
-                        '.notebook-title, [class*="notebook-name"], h1'
-                    );
-                    if (titleEl) {
-                        result.title = titleEl.textContent?.trim() || '';
+                    // Helper function to count mat-icons with specific text content
+                    const countIconsByText = (container, iconText) => {
+                        if (!container) return 0;
+                        const icons = container.querySelectorAll('mat-icon');
+                        let count = 0;
+                        icons.forEach(icon => {
+                            if (icon.textContent?.trim() === iconText) {
+                                count++;
+                            }
+                        });
+                        return count;
+                    };
+
+                    // Get notebook title - try multiple selectors
+                    const titleSelectors = [
+                        '.notebook-title',
+                        '[class*="notebook-name"]',
+                        'h1',
+                        '[class*="title"]'
+                    ];
+                    for (const sel of titleSelectors) {
+                        const el = document.querySelector(sel);
+                        if (el && el.textContent?.trim()) {
+                            result.title = el.textContent.trim();
+                            break;
+                        }
                     }
 
-                    // Get sources from source panel
-                    const sourceItems = document.querySelectorAll(
-                        '.source-panel .source-item, ' +
-                        '[class*="source-list"] [class*="source-item"], ' +
-                        '.sources-container [class*="item"]'
-                    );
+                    // Get sources from source panel - try multiple approaches
+                    const sourcePanelSelectors = [
+                        '.source-panel .source-item',
+                        '[class*="source-list"] [class*="source-item"]',
+                        '.sources-container [class*="item"]',
+                        '[class*="source"] [class*="item"]'
+                    ];
+                    let sourceItems = [];
+                    for (const sel of sourcePanelSelectors) {
+                        const items = document.querySelectorAll(sel);
+                        if (items.length > 0) {
+                            sourceItems = items;
+                            break;
+                        }
+                    }
                     sourceItems.forEach(item => {
                         const titleEl = item.querySelector(
                             '[class*="title"], [class*="name"], .source-title'
                         );
-                        const typeEl = item.querySelector(
-                            '[class*="type"], mat-icon'
-                        );
+                        const typeEl = item.querySelector('mat-icon');
                         result.sources.push({
                             title: titleEl?.textContent?.trim() || 'Untitled',
                             type: typeEl?.textContent?.trim() || 'unknown'
                         });
                     });
 
-                    // Count artifacts in studio panel
-                    const studioPanel = document.querySelector('.studio-panel');
-                    if (studioPanel) {
+                    // Count artifacts - look for mat-icons with specific text
+                    // Try studio panel first, then look in other common containers
+                    const artifactContainers = [
+                        document.querySelector('.studio-panel'),
+                        document.querySelector('[class*="studio"]'),
+                        document.querySelector('[class*="artifact"]'),
+                        document.body
+                    ];
+
+                    let artifactContainer = null;
+                    for (const container of artifactContainers) {
+                        if (container) {
+                            artifactContainer = container;
+                            break;
+                        }
+                    }
+
+                    if (artifactContainer) {
                         // Mind maps (flowchart icon)
-                        const mindmaps = studioPanel.querySelectorAll(
-                            'mat-icon.artifact-icon:has-text("flowchart"), ' +
-                            '[class*="artifact"]:has(mat-icon:has-text("flowchart"))'
-                        );
-                        result.artifacts.mindmaps = mindmaps.length;
+                        result.artifacts.mindmaps = countIconsByText(artifactContainer, 'flowchart');
 
                         // Infographics (stacked_bar_chart icon)
-                        const infographics = studioPanel.querySelectorAll(
-                            'mat-icon.artifact-icon:has-text("stacked_bar_chart"), ' +
-                            '[class*="artifact"]:has(mat-icon:has-text("stacked_bar_chart"))'
-                        );
-                        result.artifacts.infographics = infographics.length;
+                        result.artifacts.infographics = countIconsByText(artifactContainer, 'stacked_bar_chart');
 
                         // Presentations (tablet icon)
-                        const presentations = studioPanel.querySelectorAll(
-                            'mat-icon.artifact-icon:has-text("tablet"), ' +
-                            '[class*="artifact"]:has(mat-icon:has-text("tablet"))'
-                        );
-                        result.artifacts.presentations = presentations.length;
+                        result.artifacts.presentations = countIconsByText(artifactContainer, 'tablet');
 
                         // Audio overviews (headphones icon)
-                        const audios = studioPanel.querySelectorAll(
-                            'mat-icon.artifact-icon:has-text("headphones"), ' +
-                            '[class*="artifact"]:has(mat-icon:has-text("headphones"))'
-                        );
-                        result.artifacts.audios = audios.length;
+                        result.artifacts.audios = countIconsByText(artifactContainer, 'headphones');
 
                         result.artifacts.total = (
                             result.artifacts.mindmaps +
@@ -471,10 +500,19 @@ class NotebookLLMPlugin(DecoratorPlugin):
                     }
 
                     // Get notes/saved notes
-                    const noteItems = document.querySelectorAll(
-                        '.notes-panel .note-item, ' +
-                        '[class*="note-list"] [class*="note-item"]'
-                    );
+                    const noteSelectors = [
+                        '.notes-panel .note-item',
+                        '[class*="note-list"] [class*="note-item"]',
+                        '[class*="notes"] [class*="item"]'
+                    ];
+                    let noteItems = [];
+                    for (const sel of noteSelectors) {
+                        const items = document.querySelectorAll(sel);
+                        if (items.length > 0) {
+                            noteItems = items;
+                            break;
+                        }
+                    }
                     noteItems.forEach(item => {
                         const content = item.querySelector(
                             '[class*="content"], [class*="text"]'
