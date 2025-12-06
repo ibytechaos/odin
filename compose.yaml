@@ -26,16 +26,14 @@ services:
       # OpenTelemetry (if using Jaeger in services network)
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
     volumes:
-      # Code hot-reload (development mode)
-      - .:/app
-      # Preserve the virtual environment from the container
-      # This prevents the host's empty .venv from overwriting the container's installed dependencies
-      - odin-venv:/app/.venv
+      # Hot-reload: only mount source code, not .venv
+      - ./src:/app/src:ro
+      - ./.env.docker:/app/.env:ro
       # Obsidian vault mount
       - ${HOME}/Documents/Obsidian/Odin:/obsidian
       # Downloads directory
       - ./downloads:/app/downloads
-      # Custom plugins
+      # Custom plugins (optional)
       - ./plugins:/app/plugins:ro
     networks:
       - services
@@ -93,7 +91,3 @@ networks:
   proxy:
     external: true
 
-volumes:
-  # Named volume to preserve container's virtual environment
-  # when mounting local code for development
-  odin-venv:

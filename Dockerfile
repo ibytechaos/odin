@@ -22,14 +22,14 @@ ENV PATH="/root/.local/bin:/root/.cargo/bin:$PATH"
 WORKDIR /app
 
 # Copy dependency files and README (required by pyproject.toml)
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml README.md ./
 
 # Copy source code first (needed for package installation)
 COPY src/ ./src/
 
 # Install dependencies and the package
 # Using explicit path in case ENV doesn't take effect in same layer
-RUN /root/.local/bin/uv sync --frozen --no-dev
+RUN /root/.local/bin/uv sync
 
 # Note: Playwright browsers are NOT installed in the container
 # We use remote Chrome debugging via CHROME_DEBUG_HOST instead

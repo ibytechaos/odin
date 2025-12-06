@@ -1321,25 +1321,35 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "ag-ui-langgraph" },
+    { name = "aiohttp" },
     { name = "aiosqlite" },
     { name = "anyio" },
+    { name = "asyncpg" },
     { name = "click" },
     { name = "copilotkit" },
+    { name = "easyocr" },
     { name = "fastapi" },
+    { name = "grpcio" },
+    { name = "grpcio-tools" },
     { name = "httpx", extra = ["socks"] },
     { name = "langchain-openai" },
     { name = "langgraph" },
     { name = "mcp" },
+    { name = "opencv-python" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp" },
     { name = "opentelemetry-exporter-prometheus" },
     { name = "opentelemetry-instrumentation" },
     { name = "opentelemetry-sdk" },
+    { name = "pdf2image" },
+    { name = "playwright" },
     { name = "prometheus-client" },
+    { name = "protobuf" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
     { name = "python-json-logger" },
+    { name = "python-pptx" },
     { name = "redis" },
     { name = "sse-starlette" },
     { name = "starlette" },
@@ -1350,66 +1360,17 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-all = [
-    { name = "aiohttp" },
-    { name = "asyncpg" },
-    { name = "easyocr" },
-    { name = "grpcio" },
-    { name = "grpcio-tools" },
-    { name = "memory-profiler" },
-    { name = "mypy" },
-    { name = "opencv-python" },
-    { name = "pdf2image" },
-    { name = "playwright" },
-    { name = "pre-commit" },
-    { name = "protobuf" },
-    { name = "py-spy" },
-    { name = "pyinstrument" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-mock" },
-    { name = "python-pptx" },
-    { name = "ruff" },
-]
-builtin-plugins = [
-    { name = "aiohttp" },
-    { name = "pdf2image" },
-    { name = "playwright" },
-]
-copilotkit = [
-    { name = "copilotkit" },
-]
 dev = [
+    { name = "memory-profiler" },
     { name = "mypy" },
     { name = "pre-commit" },
+    { name = "py-spy" },
+    { name = "pyinstrument" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
     { name = "ruff" },
-]
-notebookllm = [
-    { name = "pdf2image" },
-    { name = "playwright" },
-]
-postgres = [
-    { name = "asyncpg" },
-]
-pptx-converter = [
-    { name = "easyocr" },
-    { name = "opencv-python" },
-    { name = "python-pptx" },
-]
-profiling = [
-    { name = "memory-profiler" },
-    { name = "py-spy" },
-    { name = "pyinstrument" },
-]
-protocols = [
-    { name = "grpcio" },
-    { name = "grpcio-tools" },
-    { name = "protobuf" },
 ]
 
 [package.dev-dependencies]
@@ -1424,48 +1385,44 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "ag-ui-langgraph", specifier = ">=0.0.21" },
-    { name = "aiohttp", marker = "extra == 'builtin-plugins'", specifier = ">=3.12.6" },
+    { name = "aiohttp", specifier = ">=3.12.6" },
     { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "anyio", specifier = ">=4.9.0" },
-    { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.30.0" },
+    { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "click", specifier = ">=8.2.1" },
     { name = "copilotkit", specifier = ">=0.1.72" },
-    { name = "copilotkit", marker = "extra == 'copilotkit'", specifier = ">=0.1.72" },
-    { name = "easyocr", marker = "extra == 'pptx-converter'", specifier = ">=1.7.2" },
+    { name = "easyocr", specifier = ">=1.7.2" },
     { name = "fastapi", specifier = ">=0.115.12" },
-    { name = "grpcio", marker = "extra == 'protocols'", specifier = ">=1.72.1" },
-    { name = "grpcio-tools", marker = "extra == 'protocols'", specifier = ">=1.72.1" },
+    { name = "grpcio", specifier = ">=1.72.1" },
+    { name = "grpcio-tools", specifier = ">=1.72.1" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
     { name = "langchain-openai", specifier = ">=0.3.25" },
     { name = "langgraph", specifier = ">=0.5.2" },
     { name = "mcp", specifier = ">=1.9.3" },
-    { name = "memory-profiler", marker = "extra == 'profiling'", specifier = ">=0.61.0" },
+    { name = "memory-profiler", marker = "extra == 'dev'", specifier = ">=0.61.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.16.0" },
-    { name = "odin", extras = ["dev", "profiling", "protocols", "postgres", "notebookllm", "builtin-plugins", "pptx-converter"], marker = "extra == 'all'" },
-    { name = "opencv-python", marker = "extra == 'pptx-converter'", specifier = ">=4.11.0" },
+    { name = "opencv-python", specifier = ">=4.11.0" },
     { name = "opentelemetry-api", specifier = ">=1.33.0" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.33.0" },
     { name = "opentelemetry-exporter-prometheus", specifier = ">=0.54b0" },
     { name = "opentelemetry-instrumentation", specifier = ">=0.54b0" },
     { name = "opentelemetry-sdk", specifier = ">=1.33.0" },
-    { name = "pdf2image", marker = "extra == 'builtin-plugins'", specifier = ">=1.17.0" },
-    { name = "pdf2image", marker = "extra == 'notebookllm'", specifier = ">=1.17.0" },
-    { name = "playwright", marker = "extra == 'builtin-plugins'", specifier = ">=1.52.0" },
-    { name = "playwright", marker = "extra == 'notebookllm'", specifier = ">=1.52.0" },
+    { name = "pdf2image", specifier = ">=1.17.0" },
+    { name = "playwright", specifier = ">=1.52.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.2.0" },
     { name = "prometheus-client", specifier = ">=0.22.1" },
-    { name = "protobuf", marker = "extra == 'protocols'", specifier = ">=6.31.1" },
-    { name = "py-spy", marker = "extra == 'profiling'", specifier = ">=0.4.0" },
+    { name = "protobuf", specifier = ">=6.31.1" },
+    { name = "py-spy", marker = "extra == 'dev'", specifier = ">=0.4.0" },
     { name = "pydantic", specifier = ">=2.11.7" },
     { name = "pydantic-settings", specifier = ">=2.9.1" },
-    { name = "pyinstrument", marker = "extra == 'profiling'", specifier = ">=5.0.1" },
+    { name = "pyinstrument", marker = "extra == 'dev'", specifier = ">=5.0.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.14.0" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
     { name = "python-json-logger", specifier = ">=3.3.0" },
-    { name = "python-pptx", marker = "extra == 'pptx-converter'", specifier = ">=1.0.2" },
+    { name = "python-pptx", specifier = ">=1.0.2" },
     { name = "redis", specifier = ">=6.2.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.11.13" },
     { name = "sse-starlette", specifier = ">=2.3.5" },
@@ -1475,7 +1432,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.3" },
     { name = "websockets", specifier = ">=15.0.1" },
 ]
-provides-extras = ["copilotkit", "dev", "profiling", "protocols", "postgres", "notebookllm", "builtin-plugins", "pptx-converter", "all"]
+provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
