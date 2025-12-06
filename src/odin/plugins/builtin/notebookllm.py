@@ -827,18 +827,22 @@ class NotebookLLMPlugin(DecoratorPlugin):
             int,
             Field(description="Interval between download attempts in seconds", ge=5, le=60)
         ] = 10,
+        force_regenerate: Annotated[
+            bool,
+            Field(description="Force regeneration even if infographic already exists")
+        ] = False,
     ) -> dict[str, Any]:
         """Generate and download an infographic from NotebookLLM sources.
 
-        This method combines generation and download into a single operation.
-        It clicks the generate button and then polls for download availability.
-        Success is determined by successful download (if you can download, generation is complete).
+        This method first checks if an infographic already exists and tries to download it.
+        If no existing infographic is found (or force_regenerate=True), it generates a new one.
 
         Args:
             notebook_url: Full URL of the NotebookLLM notebook
             output_dir: Directory to save downloaded file
             timeout: Maximum time to wait in seconds
             poll_interval: Interval between download attempts in seconds
+            force_regenerate: Force regeneration even if infographic already exists
 
         Returns:
             Status with downloaded file path
@@ -858,7 +862,24 @@ class NotebookLLMPlugin(DecoratorPlugin):
                     "notebook_url": notebook_url,
                 }
 
-            # Click generate button
+            # First, try to download existing infographic (unless force_regenerate)
+            if not force_regenerate:
+                result = await self._download_artifact(
+                    page, "stacked_bar_chart", "infographic", output_path, 30
+                )
+                if result:
+                    return {
+                        "success": True,
+                        "data": {
+                            "message": "Existing infographic downloaded (no regeneration needed)",
+                            "notebook_url": notebook_url,
+                            "file": result,
+                            "output_dir": str(output_path),
+                            "was_existing": True,
+                        },
+                    }
+
+            # No existing infographic found, need to generate
             infographic_btn = await page.query_selector(
                 '.create-artifact-button-container:has-text("信息图")'
             )
@@ -912,6 +933,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
                             "notebook_url": notebook_url,
                             "file": result,
                             "output_dir": str(output_path),
+                            "was_existing": False,
                         },
                     }
 
@@ -1073,12 +1095,15 @@ class NotebookLLMPlugin(DecoratorPlugin):
             int,
             Field(description="Interval between download attempts in seconds", ge=5, le=120)
         ] = 30,
+        force_regenerate: Annotated[
+            bool,
+            Field(description="Force regeneration even if presentation already exists")
+        ] = False,
     ) -> dict[str, Any]:
         """Generate and download a presentation from NotebookLLM sources.
 
-        This method combines generation and download into a single operation.
-        It clicks the generate button and then polls for download availability.
-        Success is determined by successful download (if you can download, generation is complete).
+        This method first checks if a presentation already exists and tries to download it.
+        If no existing presentation is found (or force_regenerate=True), it generates a new one.
 
         Note: Presentation generation can take a long time (up to 1 hour).
 
@@ -1087,6 +1112,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
             output_dir: Directory to save downloaded file
             timeout: Maximum time to wait in seconds (default: 1 hour)
             poll_interval: Interval between download attempts in seconds
+            force_regenerate: Force regeneration even if presentation already exists
 
         Returns:
             Status with downloaded file path
@@ -1106,7 +1132,24 @@ class NotebookLLMPlugin(DecoratorPlugin):
                     "notebook_url": notebook_url,
                 }
 
-            # Click generate button
+            # First, try to download existing presentation (unless force_regenerate)
+            if not force_regenerate:
+                result = await self._download_artifact(
+                    page, "tablet", "presentation", output_path, 60
+                )
+                if result:
+                    return {
+                        "success": True,
+                        "data": {
+                            "message": "Existing presentation downloaded (no regeneration needed)",
+                            "notebook_url": notebook_url,
+                            "file": result,
+                            "output_dir": str(output_path),
+                            "was_existing": True,
+                        },
+                    }
+
+            # No existing presentation found, need to generate
             presentation_btn = await page.query_selector(
                 '.create-artifact-button-container:has-text("演示文稿")'
             )
@@ -1160,6 +1203,7 @@ class NotebookLLMPlugin(DecoratorPlugin):
                             "notebook_url": notebook_url,
                             "file": result,
                             "output_dir": str(output_path),
+                            "was_existing": False,
                         },
                     }
 
