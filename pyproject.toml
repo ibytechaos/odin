@@ -45,6 +45,7 @@ dependencies = [
     # Data persistence
     "redis>=6.2.0",
     "aiosqlite>=0.21.0",
+    "asyncpg>=0.30.0",
     # Utilities
     "tenacity>=9.1.2",  # Retry logic
     "click>=8.2.1",     # CLI framework
@@ -53,15 +54,22 @@ dependencies = [
     "langchain-openai>=0.3.25",
     "httpx[socks]>=0.28.1",
     "ag-ui-langgraph>=0.0.21",
+    # Protocol extensions
+    "grpcio>=1.72.1",
+    "grpcio-tools>=1.72.1",
+    "protobuf>=6.31.1",
+    # Browser automation & PDF processing
+    "aiohttp>=3.12.6",
+    "playwright>=1.52.0",
+    "pdf2image>=1.17.0",
+    # PPT conversion (OCR + image processing)
+    "easyocr>=1.7.2",
+    "python-pptx>=1.0.2",
+    "opencv-python>=4.11.0",
 ]
 
 [project.optional-dependencies]
-# CopilotKit integration
-copilotkit = [
-    "copilotkit>=0.1.72",
-]
-
-# Development dependencies
+# Development dependencies only
 dev = [
     "pytest>=8.4.0",
     "pytest-asyncio>=1.0.0",
@@ -70,50 +78,9 @@ dev = [
     "mypy>=1.16.0",
     "ruff>=0.11.13",
     "pre-commit>=4.2.0",
-]
-
-# Performance profiling
-profiling = [
     "pyinstrument>=5.0.1",
     "memory-profiler>=0.61.0",
     "py-spy>=0.4.0",
-]
-
-# Additional protocol support
-protocols = [
-    "grpcio>=1.72.1",
-    "grpcio-tools>=1.72.1",
-    "protobuf>=6.31.1",
-]
-
-# PostgreSQL support
-postgres = [
-    "asyncpg>=0.30.0",
-]
-
-# NotebookLLM automation tools
-notebookllm = [
-    "playwright>=1.52.0",
-    "pdf2image>=1.17.0",
-]
-
-# Built-in plugins dependencies
-builtin-plugins = [
-    "aiohttp>=3.12.6",
-    "playwright>=1.52.0",
-    "pdf2image>=1.17.0",
-]
-
-# PPT conversion tools (OCR + image processing)
-pptx-converter = [
-    "easyocr>=1.7.2",  # OCR supporting Python 3.14+, 80+ languages including Chinese
-    "python-pptx>=1.0.2",
-    "opencv-python>=4.11.0",
-]
-
-# All optional dependencies
-all = [
-    "odin[dev,profiling,protocols,postgres,notebookllm,builtin-plugins,pptx-converter]",
 ]
 
 [project.urls]
