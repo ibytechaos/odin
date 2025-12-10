@@ -103,6 +103,16 @@ class Settings(BaseSettings):
     browser_debug_url: str | None = Field(None, validation_alias="BROWSER_DEBUG_URL")
     browser_download_dir: str | None = Field(None, validation_alias="BROWSER_DOWNLOAD_DIR")
 
+    # Mobile automation settings
+    mobile_controller: Literal["adb", "hdc", "ios"] = "adb"
+    mobile_device_id: str | None = Field(None, validation_alias="ODIN_MOBILE_DEVICE_ID")
+    mobile_adb_path: str = "adb"
+    mobile_hdc_path: str = "hdc"
+    mobile_agent_mode: Literal["react", "plan_execute", "hierarchical"] = "react"
+    mobile_max_rounds: int = 50
+    mobile_tool_delay_ms: int = 400
+    mobile_interaction: Literal["cli", "gui", "callback"] = "cli"
+
     @field_validator("plugin_dirs", mode="before")
     @classmethod
     def parse_plugin_dirs(cls, v: str | list[str] | list[Path]) -> list[Path]:

@@ -3,4 +3,4 @@
 from odin.plugins.builtin.mobile.controllers.adb import ADBConfig, ADBController
 from odin.plugins.builtin.mobile.controllers.base import BaseController
 
-__all__ = ["BaseController", "ADBController", "ADBConfig"]
+__all__ = ["ADBConfig", "ADBController", "BaseController"]

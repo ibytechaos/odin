@@ -6,6 +6,13 @@ from odin.agents.mobile.base import (
     MobileAgentBase,
     VisionAnalysis,
 )
+from odin.agents.mobile.factory import (
+    create_controller,
+    create_interaction_handler,
+    create_mobile_agent,
+    create_mobile_agent_from_settings,
+    create_mobile_plugin,
+)
 from odin.agents.mobile.hierarchical import (
     HierarchicalPlan,
     MobileHierarchicalAgent,
@@ -30,4 +37,9 @@ __all__ = [
     "PlanStep",
     "SubTask",
     "VisionAnalysis",
+    "create_controller",
+    "create_interaction_handler",
+    "create_mobile_agent",
+    "create_mobile_agent_from_settings",
+    "create_mobile_plugin",
 ]

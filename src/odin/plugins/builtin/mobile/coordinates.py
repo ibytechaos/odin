@@ -17,7 +17,7 @@ class CoordinateSystem(str, Enum):
     PIXELS = "pixels"  # > 1000
 
     @classmethod
-    def detect(cls, value: float) -> "CoordinateSystem":
+    def detect(cls, value: float) -> CoordinateSystem:
         """Detect coordinate system from value.
 
         Args:
