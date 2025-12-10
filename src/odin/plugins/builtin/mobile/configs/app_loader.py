@@ -1,9 +1,8 @@
 """App mapping configuration loader."""
 
 from pathlib import Path
-from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel
 
 
@@ -29,6 +28,9 @@ class IOSAppConfig(BaseModel):
 
     bundle_id: str
     aliases: list[str] = []
+
+
+AppConfig = AndroidAppConfig | HarmonyAppConfig | IOSAppConfig
 
 
 class AppMapper:
@@ -58,21 +60,21 @@ class AppMapper:
 
         # Load Android apps
         for name, config in data.get("android", {}).items():
-            app_config = AndroidAppConfig(**config)
-            self._android_apps[name] = app_config
-            self._register_aliases("android", name, app_config.aliases)
+            android_config = AndroidAppConfig(**config)
+            self._android_apps[name] = android_config
+            self._register_aliases("android", name, android_config.aliases)
 
         # Load Harmony apps
         for name, config in data.get("harmony", {}).items():
-            app_config = HarmonyAppConfig(**config)
-            self._harmony_apps[name] = app_config
-            self._register_aliases("harmony", name, app_config.aliases)
+            harmony_config = HarmonyAppConfig(**config)
+            self._harmony_apps[name] = harmony_config
+            self._register_aliases("harmony", name, harmony_config.aliases)
 
         # Load iOS apps
         for name, config in data.get("ios", {}).items():
-            app_config = IOSAppConfig(**config)
-            self._ios_apps[name] = app_config
-            self._register_aliases("ios", name, app_config.aliases)
+            ios_config = IOSAppConfig(**config)
+            self._ios_apps[name] = ios_config
+            self._register_aliases("ios", name, ios_config.aliases)
 
     def _register_aliases(self, platform: str, app_name: str, aliases: list[str]) -> None:
         """Register aliases for an app."""
@@ -89,7 +91,7 @@ class AppMapper:
                 self._alias_map[key] = []
             self._alias_map[key].append((platform, app_name))
 
-    def resolve(self, name: str, platform: str | None = None) -> tuple[str, Any] | None:
+    def resolve(self, name: str, platform: str | None = None) -> tuple[str, AppConfig] | None:
         """Resolve app name or alias to configuration.
 
         Args:
@@ -131,21 +133,27 @@ class AppMapper:
         """Get Android app config by name or alias."""
         result = self.resolve(name, platform="android")
         if result and result[0] == "android":
-            return result[1]
+            config = result[1]
+            if isinstance(config, AndroidAppConfig):
+                return config
         return None
 
     def get_harmony_app(self, name: str) -> HarmonyAppConfig | None:
         """Get Harmony OS app config by name or alias."""
         result = self.resolve(name, platform="harmony")
         if result and result[0] == "harmony":
-            return result[1]
+            config = result[1]
+            if isinstance(config, HarmonyAppConfig):
+                return config
         return None
 
     def get_ios_app(self, name: str) -> IOSAppConfig | None:
         """Get iOS app config by name or alias."""
         result = self.resolve(name, platform="ios")
         if result and result[0] == "ios":
-            return result[1]
+            config = result[1]
+            if isinstance(config, IOSAppConfig):
+                return config
         return None
 
     def list_apps(self, platform: str | None = None) -> dict[str, list[str]]:

@@ -8,7 +8,7 @@ from pydantic import Field
 
 from odin.decorators.tool import tool
 from odin.plugins.base import DecoratorPlugin
-from odin.plugins.builtin.mobile.configs.app_loader import get_app_mapper
+from odin.plugins.builtin.mobile.configs.app_loader import AndroidAppConfig, get_app_mapper
 from odin.plugins.builtin.mobile.coordinates import normalize_coordinate
 from odin.plugins.builtin.mobile.interaction import (
     HumanInteractionHandler,
@@ -75,17 +75,17 @@ class MobilePlugin(DecoratorPlugin):
             settings = get_settings()
 
             if settings.mobile_controller == "adb":
-                config = ADBConfig(
+                adb_config = ADBConfig(
                     device_id=settings.mobile_device_id,
                     adb_path=settings.mobile_adb_path,
                 )
-                return ADBController(config)
+                return ADBController(adb_config)
             elif settings.mobile_controller == "hdc":
-                config = HDCConfig(
+                hdc_config = HDCConfig(
                     device_id=settings.mobile_device_id,
                     hdc_path=settings.mobile_hdc_path,
                 )
-                return HDCController(config)
+                return HDCController(hdc_config)
             else:
                 return None
         except Exception:
@@ -227,8 +227,14 @@ class MobilePlugin(DecoratorPlugin):
 
         if result:
             _, config = result
-            package = config.package
-            activity = config.activity
+            # Handle different config types - only AndroidAppConfig has package/activity
+            if isinstance(config, AndroidAppConfig):
+                package = config.package
+                activity = config.activity
+            else:
+                # For other platforms, treat app_name as package name
+                package = app_name
+                activity = None
         else:
             # Treat as direct package name
             package = app_name
@@ -272,7 +278,9 @@ class MobilePlugin(DecoratorPlugin):
     async def human_interact(
         self,
         prompt: Annotated[str, Field(description="提示用户的信息")],
-        input_type: Annotated[str, Field(description="输入类型: text/confirmation/choice")] = "text",
+        input_type: Annotated[
+            str, Field(description="输入类型: text/confirmation/choice")
+        ] = "text",
         choices: Annotated[list[str] | None, Field(description="选项列表(choice类型时)")] = None,
         timeout: Annotated[float | None, Field(description="超时时间(秒)")] = None,
     ) -> dict[str, Any]:

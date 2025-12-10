@@ -49,9 +49,7 @@ class BaseController(ABC):
         """
 
     @abstractmethod
-    async def swipe(
-        self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300
-    ) -> None:
+    async def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
         """Swipe from one point to another.
 
         Args:

@@ -875,7 +875,6 @@ def mobile(task: str, mode: str | None, max_rounds: int | None, verbose: bool) -
         odin mobile "滑动屏幕浏览内容" -v
     """
     async def _run_mobile():
-        from odin.agents.mobile.factory import create_mobile_agent_from_settings
         from odin.config.settings import get_settings
         from odin.plugins.builtin.mobile.interaction import CLIInteractionHandler
 
@@ -896,12 +895,13 @@ def mobile(task: str, mode: str | None, max_rounds: int | None, verbose: bool) -
 
         # Create agent with CLI interaction handler
         try:
+            from openai import AsyncOpenAI
+
             from odin.agents.mobile.factory import (
                 create_controller,
                 create_mobile_agent,
                 create_mobile_plugin,
             )
-            from openai import AsyncOpenAI
 
             # Create LLM client
             llm_client = AsyncOpenAI(
@@ -942,6 +942,18 @@ def mobile(task: str, mode: str | None, max_rounds: int | None, verbose: bool) -
                 tool_delay_ms=settings.mobile_tool_delay_ms,
             )
 
+            # Create log callback for real-time output
+            def log_callback(level: str, message: str) -> None:
+                """Display log messages in real-time."""
+                if level == "error":
+                    click.echo(click.style(f"[ERROR] {message}", fg="red"))
+                elif level == "warning":
+                    click.echo(click.style(f"[WARN] {message}", fg="yellow"))
+                elif level == "info":
+                    click.echo(click.style(f"[INFO] {message}", fg="cyan"))
+                elif verbose and level == "debug":
+                    click.echo(click.style(f"[DEBUG] {message}", fg="white", dim=True))
+
             # Create agent
             agent = create_mobile_agent(
                 mode=actual_mode,
@@ -951,6 +963,7 @@ def mobile(task: str, mode: str | None, max_rounds: int | None, verbose: bool) -
                 llm_model=settings.openai_model,
                 vlm_model=settings.vlm_model,
                 max_rounds=actual_max_rounds,
+                log_callback=log_callback,
             )
 
             click.echo(click.style("Starting execution...", fg="green"))
@@ -988,7 +1001,7 @@ def mobile(task: str, mode: str | None, max_rounds: int | None, verbose: bool) -
             if verbose:
                 import traceback
                 traceback.print_exc()
-            raise SystemExit(1)
+            raise SystemExit(1) from None
 
     asyncio.run(_run_mobile())
 

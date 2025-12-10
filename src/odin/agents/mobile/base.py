@@ -2,6 +2,7 @@
 
 import base64
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -11,6 +12,10 @@ if TYPE_CHECKING:
 
     from odin.plugins.builtin.mobile.interaction import HumanInteractionHandler
     from odin.plugins.builtin.mobile.plugin import MobilePlugin
+
+
+# Type for log callback: (level, message) -> None
+LogCallback = Callable[[str, str], None]
 
 
 class AgentStatus(str, Enum):
@@ -63,6 +68,7 @@ class MobileAgentBase(ABC):
         vlm_model: str = "gpt-4o",
         max_rounds: int = 50,
         interaction_handler: HumanInteractionHandler | None = None,
+        log_callback: LogCallback | None = None,
     ):
         """Initialize the mobile agent.
 
@@ -74,6 +80,7 @@ class MobileAgentBase(ABC):
             vlm_model: Model name for vision analysis
             max_rounds: Maximum execution rounds before stopping
             interaction_handler: Handler for human interaction requests
+            log_callback: Optional callback for logging (level, message) -> None
         """
         self._plugin = plugin
         self._llm_client = llm_client
@@ -82,10 +89,21 @@ class MobileAgentBase(ABC):
         self._vlm_model = vlm_model
         self._max_rounds = max_rounds
         self._interaction_handler = interaction_handler
+        self._log_callback = log_callback
 
         self._status = AgentStatus.IDLE
         self._current_round = 0
         self._history: list[dict[str, Any]] = []
+
+    def _log(self, level: str, message: str) -> None:
+        """Log a message via callback if available.
+
+        Args:
+            level: Log level (info, debug, warning, error)
+            message: Log message
+        """
+        if self._log_callback:
+            self._log_callback(level, message)
 
     @property
     def status(self) -> AgentStatus:
@@ -139,21 +157,20 @@ Respond in JSON format:
     "confidence": 0.0-1.0
 }"""
 
-        user_content = []
+        user_content: list[dict[str, Any]] = []
         if task:
             user_content.append({"type": "text", "text": f"Task: {task}"})
         if context:
             user_content.append({"type": "text", "text": f"Context: {context}"})
-        user_content.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:image/png;base64,{base64_image}"}
-        })
+        user_content.append(
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}"}}
+        )
 
         response = await self._vlm_client.chat.completions.create(
             model=self._vlm_model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
+                {"role": "user", "content": user_content},  # type: ignore[misc,list-item]
             ],
             max_tokens=1024,
         )
@@ -163,6 +180,7 @@ Respond in JSON format:
         # Parse JSON response
         try:
             import json
+
             # Try to extract JSON from the response
             json_start = raw_response.find("{")
             json_end = raw_response.rfind("}") + 1

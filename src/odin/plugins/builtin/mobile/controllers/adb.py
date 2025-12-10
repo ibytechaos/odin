@@ -104,13 +104,9 @@ class ADBController(BaseController):
 
     async def long_press(self, x: int, y: int, duration_ms: int = 1000) -> None:
         """Long press at coordinates using swipe with same start/end."""
-        await self._run_shell(
-            "input", "swipe", str(x), str(y), str(x), str(y), str(duration_ms)
-        )
+        await self._run_shell("input", "swipe", str(x), str(y), str(x), str(y), str(duration_ms))
 
-    async def swipe(
-        self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300
-    ) -> None:
+    async def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
         """Swipe from one point to another."""
         await self._run_shell(
             "input", "swipe", str(x1), str(y1), str(x2), str(y2), str(duration_ms)

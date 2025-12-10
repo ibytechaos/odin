@@ -1,7 +1,10 @@
 """HDC (HarmonyOS Device Connector) controller implementation."""
 
 import asyncio
+import contextlib
 import re
+import tempfile
+from pathlib import Path
 
 from pydantic import Field
 
@@ -108,13 +111,9 @@ class HDCController(BaseController):
     async def long_press(self, x: int, y: int, duration_ms: int = 1000) -> None:
         """Long press at coordinates."""
         # HarmonyOS uitest supports longClick
-        await self._run_shell(
-            "uitest", "uiInput", "longClick", str(x), str(y), str(duration_ms)
-        )
+        await self._run_shell("uitest", "uiInput", "longClick", str(x), str(y), str(duration_ms))
 
-    async def swipe(
-        self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300
-    ) -> None:
+    async def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
         """Swipe from one point to another."""
         # Convert duration to speed (pixels per second)
         # HarmonyOS uitest swipe uses: swipe x1 y1 x2 y2 speed
@@ -146,40 +145,36 @@ class HDCController(BaseController):
 
         Note: HarmonyOS snapshot_display only supports JPEG format.
         """
-        import os
-        import tempfile
-
         # HarmonyOS screenshot command saves to file (must be .jpeg)
         remote_path = "/data/local/tmp/screenshot.jpeg"
         await self._run_shell("snapshot_display", "-f", remote_path)
 
         # Pull the file to local
         with tempfile.NamedTemporaryFile(suffix=".jpeg", delete=False) as f:
-            local_path = f.name
+            local_path = Path(f.name)
 
         try:
-            cmd = self._build_command("file", "recv", remote_path, local_path)
+            cmd = self._build_command("file", "recv", remote_path, str(local_path))
             await self._run_command(cmd)
 
             # Read and return the file contents
-            with open(local_path, "rb") as f:
-                return f.read()
+            return local_path.read_bytes()
         finally:
             # Clean up local file
-            if os.path.exists(local_path):
-                os.remove(local_path)
+            if local_path.exists():
+                local_path.unlink()
             # Clean up remote file
-            try:
+            with contextlib.suppress(Exception):
                 await self._run_shell("rm", remote_path)
-            except Exception:
-                pass
 
     async def get_screen_size(self) -> tuple[int, int]:
         """Get screen size from hidumper RenderService."""
         output = await self._run_shell("hidumper", "-s", "RenderService", "-a", "screen")
         # Parse screen size from hidumper output
         # Format: "physical resolution=1260x2844" or "render resolution=1260x2844"
-        resolution_match = re.search(r"(?:physical|render)\s+resolution[=:]\s*(\d+)x(\d+)", output, re.IGNORECASE)
+        resolution_match = re.search(
+            r"(?:physical|render)\s+resolution[=:]\s*(\d+)x(\d+)", output, re.IGNORECASE
+        )
         if resolution_match:
             return int(resolution_match.group(1)), int(resolution_match.group(2))
 
@@ -201,9 +196,7 @@ class HDCController(BaseController):
         """
         if activity:
             # Start specific ability
-            await self._run_shell(
-                "aa", "start", "-b", package, "-a", activity
-            )
+            await self._run_shell("aa", "start", "-b", package, "-a", activity)
         else:
             # Start main ability of the bundle
             await self._run_shell("aa", "start", "-b", package)

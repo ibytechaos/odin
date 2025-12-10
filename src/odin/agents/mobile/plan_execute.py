@@ -53,7 +53,12 @@ class MobilePlanExecuteAgent(MobileAgentBase):
     4. Replan if step fails or state deviates
     """
 
-    def __init__(self, *args, replan_on_failure: bool = True, **kwargs):
+    def __init__(
+        self,
+        *args: Any,
+        replan_on_failure: bool = True,
+        **kwargs: Any,
+    ) -> None:
         """Initialize the agent.
 
         Args:
@@ -84,25 +89,35 @@ class MobilePlanExecuteAgent(MobileAgentBase):
         self._status = AgentStatus.RUNNING
         self._plan = None
         self._replan_count = 0
+        self._log("info", f"Starting task: {task}")
 
         try:
             # Step 1: Take initial screenshot and analyze
+            self._log("debug", "Taking initial screenshot...")
             _screenshot, analysis = await self.take_screenshot_and_analyze(task=task)
+            self._log("info", f"Screen: {analysis.description[:100]}...")
 
             # Step 2: Generate initial plan
+            self._log("info", "Generating execution plan...")
             self._plan = await self._generate_plan(task, analysis)
 
             if not self._plan.steps:
                 self._status = AgentStatus.FAILED
+                self._log("error", "Failed to generate execution plan")
                 return AgentResult(
                     success=False,
                     message="Failed to generate execution plan",
                     error="empty_plan",
                 )
 
+            self._log("info", f"Plan generated with {len(self._plan.steps)} steps:")
+            for step in self._plan.steps:
+                self._log("info", f"  {step.index}. {step.description}")
+
             # Step 3: Execute plan steps
             while not self._plan.is_complete and self._current_round < self._max_rounds:
                 if self._status == AgentStatus.PAUSED:
+                    self._log("warning", "Execution paused")
                     return AgentResult(
                         success=False,
                         message="Execution paused",
@@ -111,14 +126,17 @@ class MobilePlanExecuteAgent(MobileAgentBase):
 
                 self._current_round += 1
                 step = self._plan.steps[self._plan.current_step]
+                self._log("info", f"Executing step {step.index}/{len(self._plan.steps)}: {step.description}")
 
                 # Execute the step
                 step_result = await self._execute_step(step)
+                self._log("debug", f"Step result: {step_result.get('success', False)}")
 
                 if step_result["success"]:
                     step.status = "completed"
                     step.result = step_result
                     self._plan.current_step += 1
+                    self._log("info", f"Step {step.index} completed")
 
                     self._add_to_history(
                         action=f"Step {step.index}: {step.description}",
@@ -127,20 +145,25 @@ class MobilePlanExecuteAgent(MobileAgentBase):
                 else:
                     step.status = "failed"
                     step.result = step_result
+                    self._log("warning", f"Step {step.index} failed")
 
                     # Try replanning if enabled
                     if self._replan_on_failure and self._replan_count < self._max_replans:
+                        self._log("info", f"Attempting replan ({self._replan_count + 1}/{self._max_replans})...")
                         replan_success = await self._replan(task, step)
                         if not replan_success:
                             self._status = AgentStatus.FAILED
+                            self._log("error", f"Replan failed for step {step.index}")
                             return AgentResult(
                                 success=False,
                                 message=f"Step {step.index} failed: {step.description}",
                                 steps_executed=self._current_round,
                                 error=str(step_result.get("error", "step_failed")),
                             )
+                        self._log("info", "Replan successful, continuing execution...")
                     else:
                         self._status = AgentStatus.FAILED
+                        self._log("error", f"Step {step.index} failed, max replans reached")
                         return AgentResult(
                             success=False,
                             message=f"Step {step.index} failed: {step.description}",
@@ -151,6 +174,7 @@ class MobilePlanExecuteAgent(MobileAgentBase):
             # Check completion
             if self._plan.is_complete:
                 self._status = AgentStatus.COMPLETED
+                self._log("info", "All steps completed successfully")
                 final_screenshot, _ = await self.take_screenshot_and_analyze(task=task)
                 return AgentResult(
                     success=True,
@@ -161,6 +185,7 @@ class MobilePlanExecuteAgent(MobileAgentBase):
                 )
             else:
                 self._status = AgentStatus.FAILED
+                self._log("error", f"Max rounds ({self._max_rounds}) reached")
                 return AgentResult(
                     success=False,
                     message=f"Max rounds ({self._max_rounds}) reached",
@@ -170,6 +195,7 @@ class MobilePlanExecuteAgent(MobileAgentBase):
 
         except Exception as e:
             self._status = AgentStatus.FAILED
+            self._log("error", f"Execution error: {e!s}")
             return AgentResult(
                 success=False,
                 message=f"Execution error: {e!s}",
@@ -209,7 +235,7 @@ Keep plans concise (3-10 steps). Each step should be atomic and verifiable."""
         user_message = f"""Task: {task}
 
 Current screen: {analysis.description}
-Visible elements: {json.dumps(analysis.elements) if analysis.elements else 'Not specified'}
+Visible elements: {json.dumps(analysis.elements) if analysis.elements else "Not specified"}
 
 Generate a plan to complete this task. Respond with JSON array only."""
 
@@ -232,12 +258,14 @@ Generate a plan to complete this task. Respond with JSON array only."""
             if json_start >= 0 and json_end > json_start:
                 raw_steps = json.loads(content[json_start:json_end])
                 for i, step_data in enumerate(raw_steps):
-                    steps.append(PlanStep(
-                        index=i + 1,
-                        description=step_data.get("description", f"Step {i+1}"),
-                        action_type=step_data.get("action_type", "wait"),
-                        parameters=step_data.get("parameters", {}),
-                    ))
+                    steps.append(
+                        PlanStep(
+                            index=i + 1,
+                            description=step_data.get("description", f"Step {i + 1}"),
+                            action_type=step_data.get("action_type", "wait"),
+                            parameters=step_data.get("parameters", {}),
+                        )
+                    )
         except json.JSONDecodeError:
             pass
 
@@ -320,7 +348,10 @@ Generate a plan to complete this task. Respond with JSON array only."""
 
         if new_plan.steps:
             # Replace remaining steps with new plan
-            completed_steps = [s for s in self._plan.steps if s.status == "completed"]
+            if self._plan is not None:
+                completed_steps = [s for s in self._plan.steps if s.status == "completed"]
+            else:
+                completed_steps = []
             self._plan = ExecutionPlan(
                 task=task,
                 steps=completed_steps + new_plan.steps,

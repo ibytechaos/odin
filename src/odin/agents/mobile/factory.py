@@ -1,13 +1,8 @@
 """Factory for creating mobile agents."""
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-if TYPE_CHECKING:
-    from openai import AsyncOpenAI
-
-    from odin.agents.mobile.base import MobileAgentBase
-    from odin.plugins.builtin.mobile.controllers.base import BaseController
-    from odin.plugins.builtin.mobile.interaction import HumanInteractionHandler
+from openai import AsyncOpenAI
 
 from odin.agents.mobile.hierarchical import MobileHierarchicalAgent
 from odin.agents.mobile.plan_execute import MobilePlanExecuteAgent
@@ -19,6 +14,11 @@ from odin.plugins.builtin.mobile.interaction import (
     NoOpInteractionHandler,
 )
 from odin.plugins.builtin.mobile.plugin import MobilePlugin
+
+if TYPE_CHECKING:
+    from odin.agents.mobile.base import LogCallback, MobileAgentBase
+    from odin.plugins.builtin.mobile.controllers.base import BaseController
+    from odin.plugins.builtin.mobile.interaction import HumanInteractionHandler
 
 AgentMode = Literal["react", "plan_execute", "hierarchical"]
 ControllerType = Literal["adb", "hdc", "ios"]
@@ -46,11 +46,11 @@ def create_controller(
         ValueError: If controller type is not supported
     """
     if controller_type == "adb":
-        config = ADBConfig(device_id=device_id, adb_path=adb_path)
-        return ADBController(config)
+        adb_config = ADBConfig(device_id=device_id, adb_path=adb_path)
+        return ADBController(adb_config)
     elif controller_type == "hdc":
-        config = HDCConfig(device_id=device_id, hdc_path=hdc_path)
-        return HDCController(config)
+        hdc_config = HDCConfig(device_id=device_id, hdc_path=hdc_path)
+        return HDCController(hdc_config)
     elif controller_type == "ios":
         raise NotImplementedError("iOS controller not yet implemented")
     else:
@@ -110,7 +110,7 @@ def create_mobile_agent(
     llm_model: str = "gpt-4o",
     vlm_model: str = "gpt-4o",
     max_rounds: int = 50,
-    **kwargs,
+    **kwargs: Any,
 ) -> MobileAgentBase:
     """Create a mobile agent with specified mode.
 
@@ -135,21 +135,36 @@ def create_mobile_agent(
     if llm_client is None:
         raise ValueError("llm_client is required")
 
-    common_args = {
-        "plugin": plugin,
-        "llm_client": llm_client,
-        "vlm_client": vlm_client,
-        "llm_model": llm_model,
-        "vlm_model": vlm_model,
-        "max_rounds": max_rounds,
-    }
-
     if mode == "react":
-        return MobileReActAgent(**common_args, **kwargs)
+        return MobileReActAgent(
+            plugin=plugin,
+            llm_client=llm_client,
+            vlm_client=vlm_client,
+            llm_model=llm_model,
+            vlm_model=vlm_model,
+            max_rounds=max_rounds,
+            **kwargs,
+        )
     elif mode == "plan_execute":
-        return MobilePlanExecuteAgent(**common_args, **kwargs)
+        return MobilePlanExecuteAgent(
+            plugin=plugin,
+            llm_client=llm_client,
+            vlm_client=vlm_client,
+            llm_model=llm_model,
+            vlm_model=vlm_model,
+            max_rounds=max_rounds,
+            **kwargs,
+        )
     elif mode == "hierarchical":
-        return MobileHierarchicalAgent(**common_args, **kwargs)
+        return MobileHierarchicalAgent(
+            plugin=plugin,
+            llm_client=llm_client,
+            vlm_client=vlm_client,
+            llm_model=llm_model,
+            vlm_model=vlm_model,
+            max_rounds=max_rounds,
+            **kwargs,
+        )
     else:
         raise ValueError(f"Unknown agent mode: {mode}")
 
@@ -158,6 +173,7 @@ def create_mobile_agent_from_settings(
     llm_client: AsyncOpenAI | None = None,
     vlm_client: AsyncOpenAI | None = None,
     interaction_handler: HumanInteractionHandler | None = None,
+    log_callback: LogCallback | None = None,
 ) -> MobileAgentBase:
     """Create a mobile agent from Odin settings.
 
@@ -165,12 +181,11 @@ def create_mobile_agent_from_settings(
         llm_client: OpenAI-compatible client for LLM (auto-created from settings if None)
         vlm_client: Optional VLM client (auto-created from settings if None)
         interaction_handler: Optional interaction handler (defaults to NoOpInteractionHandler)
+        log_callback: Optional callback for logging (level, message) -> None
 
     Returns:
         Configured mobile agent based on settings
     """
-    from openai import AsyncOpenAI
-
     from odin.config.settings import get_settings
 
     settings = get_settings()
@@ -217,4 +232,5 @@ def create_mobile_agent_from_settings(
         llm_model=settings.openai_model,
         vlm_model=settings.vlm_model,
         max_rounds=settings.mobile_max_rounds,
+        log_callback=log_callback,
     )

@@ -57,7 +57,12 @@ class MobileHierarchicalAgent(MobileAgentBase):
     - Sub-task 2: Open WeChat, select photo, send to friend (WeChat app)
     """
 
-    def __init__(self, *args, sub_agent_max_rounds: int = 20, **kwargs):
+    def __init__(
+        self,
+        *args: Any,
+        sub_agent_max_rounds: int = 20,
+        **kwargs: Any,
+    ) -> None:
         """Initialize the hierarchical agent.
 
         Args:
@@ -86,63 +91,76 @@ class MobileHierarchicalAgent(MobileAgentBase):
         self.reset()
         self._status = AgentStatus.RUNNING
         self._plan = None
+        self._log("info", f"Starting task: {task}")
 
         try:
             # Step 1: Take initial screenshot and analyze
+            self._log("debug", "Taking initial screenshot...")
             _, analysis = await self.take_screenshot_and_analyze(task=task)
+            self._log("info", f"Screen: {analysis.description[:100]}...")
 
             # Step 2: Generate hierarchical plan
+            self._log("info", "Generating hierarchical plan...")
             self._plan = await self._generate_hierarchical_plan(task, analysis)
 
             if not self._plan.sub_tasks:
                 self._status = AgentStatus.FAILED
+                self._log("error", "Failed to generate hierarchical plan")
                 return AgentResult(
                     success=False,
                     message="Failed to generate hierarchical plan",
                     error="empty_plan",
                 )
 
+            self._log("info", f"Plan generated with {len(self._plan.sub_tasks)} sub-tasks:")
+            for st in self._plan.sub_tasks:
+                self._log("info", f"  {st.index}. [{st.app}] {st.objective}")
+
             # Step 3: Execute each sub-task
             while not self._plan.is_complete and self._current_round < self._max_rounds:
                 if self._status == AgentStatus.PAUSED:
+                    self._log("warning", "Execution paused")
                     return AgentResult(
                         success=False,
                         message="Execution paused",
                         steps_executed=self._current_round,
                     )
 
-                sub_task = self._plan.current_sub_task
-                if sub_task is None:
+                current_task = self._plan.current_sub_task
+                if current_task is None:
                     break
 
                 self._current_round += 1
-                sub_task.status = "running"
+                current_task.status = "running"
+                self._log("info", f"Executing sub-task {current_task.index}/{len(self._plan.sub_tasks)}: [{current_task.app}] {current_task.objective}")
 
                 # Pass variables from previous sub-tasks
-                sub_task.variables_in = self._plugin._variables.copy()
+                current_task.variables_in = self._plugin._variables.copy()
 
                 # Execute sub-task with ReAct agent
-                sub_result = await self._execute_sub_task(sub_task)
+                sub_result = await self._execute_sub_task(current_task)
 
-                sub_task.result = sub_result
-                sub_task.variables_out = self._plugin._variables.copy()
+                current_task.result = sub_result
+                current_task.variables_out = self._plugin._variables.copy()
 
                 if sub_result.success:
-                    sub_task.status = "completed"
+                    current_task.status = "completed"
                     self._plan.current_index += 1
+                    self._log("info", f"Sub-task {current_task.index} completed (steps: {sub_result.steps_executed})")
 
                     self._add_to_history(
-                        action=f"SubTask {sub_task.index}: {sub_task.app} - {sub_task.objective}",
+                        action=f"SubTask {current_task.index}: {current_task.app} - {current_task.objective}",
                         result={"success": True, "steps": sub_result.steps_executed},
                     )
                 else:
-                    sub_task.status = "failed"
+                    current_task.status = "failed"
+                    self._log("error", f"Sub-task {current_task.index} failed: {sub_result.error}")
 
                     # Try to recover or fail
                     self._status = AgentStatus.FAILED
                     return AgentResult(
                         success=False,
-                        message=f"Sub-task {sub_task.index} failed: {sub_task.objective}",
+                        message=f"Sub-task {current_task.index} failed: {current_task.objective}",
                         steps_executed=self._current_round,
                         error=sub_result.error,
                         variables=self._plugin._variables.copy(),
@@ -151,6 +169,7 @@ class MobileHierarchicalAgent(MobileAgentBase):
             # Check completion
             if self._plan.is_complete:
                 self._status = AgentStatus.COMPLETED
+                self._log("info", "All sub-tasks completed successfully")
                 final_screenshot, _ = await self.take_screenshot_and_analyze(task=task)
                 return AgentResult(
                     success=True,
@@ -161,6 +180,7 @@ class MobileHierarchicalAgent(MobileAgentBase):
                 )
             else:
                 self._status = AgentStatus.FAILED
+                self._log("error", f"Max rounds ({self._max_rounds}) reached")
                 return AgentResult(
                     success=False,
                     message=f"Max rounds ({self._max_rounds}) reached",
@@ -170,6 +190,7 @@ class MobileHierarchicalAgent(MobileAgentBase):
 
         except Exception as e:
             self._status = AgentStatus.FAILED
+            self._log("error", f"Execution error: {e!s}")
             return AgentResult(
                 success=False,
                 message=f"Execution error: {e!s}",
@@ -210,7 +231,7 @@ Keep sub-tasks high-level (the low-level agent will figure out the clicks)."""
         user_message = f"""Task: {task}
 
 Current screen: {analysis.description}
-Current variables: {json.dumps(self._plugin._variables) if self._plugin._variables else 'None'}
+Current variables: {json.dumps(self._plugin._variables) if self._plugin._variables else "None"}
 
 Break this task into app-level sub-tasks. Respond with JSON array only."""
 
@@ -233,11 +254,13 @@ Break this task into app-level sub-tasks. Respond with JSON array only."""
             if json_start >= 0 and json_end > json_start:
                 raw_tasks = json.loads(content[json_start:json_end])
                 for i, task_data in enumerate(raw_tasks):
-                    sub_tasks.append(SubTask(
-                        index=i + 1,
-                        app=task_data.get("app", "Unknown"),
-                        objective=task_data.get("objective", f"Sub-task {i+1}"),
-                    ))
+                    sub_tasks.append(
+                        SubTask(
+                            index=i + 1,
+                            app=task_data.get("app", "Unknown"),
+                            objective=task_data.get("objective", f"Sub-task {i + 1}"),
+                        )
+                    )
         except json.JSONDecodeError:
             pass
 
@@ -260,6 +283,7 @@ Break this task into app-level sub-tasks. Respond with JSON array only."""
             llm_model=self._llm_model,
             vlm_model=self._vlm_model,
             max_rounds=self._sub_agent_max_rounds,
+            log_callback=self._log_callback,
         )
 
         # Build the sub-task prompt

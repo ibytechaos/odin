@@ -27,10 +27,12 @@ class MobileReActAgent(MobileAgentBase):
         """
         self.reset()
         self._status = AgentStatus.RUNNING
+        self._log("info", f"Starting task: {task}")
 
         try:
             while self._current_round < self._max_rounds:
                 if self._status == AgentStatus.PAUSED:
+                    self._log("warning", "Execution paused")
                     return AgentResult(
                         success=False,
                         message="Execution paused",
@@ -38,19 +40,25 @@ class MobileReActAgent(MobileAgentBase):
                     )
 
                 self._current_round += 1
+                self._log("info", f"Round {self._current_round}/{self._max_rounds}")
 
                 # Step 1: Take screenshot and analyze
+                self._log("debug", "Taking screenshot...")
                 screenshot, analysis = await self.take_screenshot_and_analyze(
                     task=task,
                     context=self._build_context(),
                 )
+                self._log("info", f"Screen: {analysis.description[:100]}...")
 
                 # Step 2: Decide next action using LLM
+                self._log("debug", "Deciding next action...")
                 action = await self._decide_action(task, analysis)
+                self._log("info", f"Action: {action.get('type', 'unknown')}")
 
                 # Check if task is complete
                 if action.get("type") == "complete":
                     self._status = AgentStatus.COMPLETED
+                    self._log("info", f"Task completed: {action.get('message', '')}")
                     return AgentResult(
                         success=True,
                         message=action.get("message", "Task completed"),
@@ -62,6 +70,7 @@ class MobileReActAgent(MobileAgentBase):
                 # Check if task failed
                 if action.get("type") == "fail":
                     self._status = AgentStatus.FAILED
+                    self._log("error", f"Task failed: {action.get('message', '')}")
                     return AgentResult(
                         success=False,
                         message=action.get("message", "Task failed"),
@@ -70,7 +79,9 @@ class MobileReActAgent(MobileAgentBase):
                     )
 
                 # Step 3: Execute the action
+                self._log("debug", f"Executing: {json.dumps(action, ensure_ascii=False)}")
                 result = await self._execute_action(action)
+                self._log("debug", f"Result: {result.get('success', False)}")
 
                 # Step 4: Record to history
                 self._add_to_history(
@@ -81,6 +92,7 @@ class MobileReActAgent(MobileAgentBase):
 
             # Max rounds reached
             self._status = AgentStatus.FAILED
+            self._log("error", f"Max rounds ({self._max_rounds}) reached")
             return AgentResult(
                 success=False,
                 message=f"Max rounds ({self._max_rounds}) reached",
@@ -90,6 +102,7 @@ class MobileReActAgent(MobileAgentBase):
 
         except Exception as e:
             self._status = AgentStatus.FAILED
+            self._log("error", f"Execution error: {e!s}")
             return AgentResult(
                 success=False,
                 message=f"Execution error: {e!s}",
@@ -149,12 +162,12 @@ Respond with a single JSON action. Think step by step about what action will hel
         user_message = f"""Task: {task}
 
 Current screen: {analysis.description}
-Visible elements: {json.dumps(analysis.elements) if analysis.elements else 'Not specified'}
-Suggested action: {analysis.suggested_action or 'None'}
+Visible elements: {json.dumps(analysis.elements) if analysis.elements else "Not specified"}
+Suggested action: {analysis.suggested_action or "None"}
 Confidence: {analysis.confidence}
 
 Recent history:
-{self._build_context() or 'No previous actions'}
+{self._build_context() or "No previous actions"}
 
 What is the next action? Respond with JSON only."""
 
@@ -174,7 +187,8 @@ What is the next action? Respond with JSON only."""
             json_start = content.find("{")
             json_end = content.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
-                return json.loads(content[json_start:json_end])
+                result: dict[str, Any] = json.loads(content[json_start:json_end])
+                return result
         except json.JSONDecodeError:
             pass
 
