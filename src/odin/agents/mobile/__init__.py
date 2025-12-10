@@ -6,6 +6,11 @@ from odin.agents.mobile.base import (
     MobileAgentBase,
     VisionAnalysis,
 )
+from odin.agents.mobile.hierarchical import (
+    HierarchicalPlan,
+    MobileHierarchicalAgent,
+    SubTask,
+)
 from odin.agents.mobile.plan_execute import (
     ExecutionPlan,
     MobilePlanExecuteAgent,
@@ -17,9 +22,12 @@ __all__ = [
     "AgentResult",
     "AgentStatus",
     "ExecutionPlan",
+    "HierarchicalPlan",
     "MobileAgentBase",
+    "MobileHierarchicalAgent",
     "MobilePlanExecuteAgent",
     "MobileReActAgent",
     "PlanStep",
+    "SubTask",
     "VisionAnalysis",
 ]
