@@ -111,7 +111,11 @@ class Settings(BaseSettings):
     mobile_agent_mode: Literal["react", "plan_execute", "hierarchical"] = "react"
     mobile_max_rounds: int = 50
     mobile_tool_delay_ms: int = 400
-    mobile_interaction: Literal["cli", "gui", "callback"] = "cli"
+
+    # VLM (Vision Language Model) settings for mobile screen analysis
+    vlm_base_url: str | None = Field(None, validation_alias="VLM_BASE_URL")
+    vlm_api_key: str | None = Field(None, validation_alias="VLM_API_KEY")
+    vlm_model: str = Field("gpt-4o", validation_alias="VLM_MODEL")
 
     @field_validator("plugin_dirs", mode="before")
     @classmethod

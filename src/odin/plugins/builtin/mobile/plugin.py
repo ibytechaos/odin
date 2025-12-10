@@ -48,6 +48,7 @@ class MobilePlugin(DecoratorPlugin):
         controller: BaseController | None = None,
         interaction_handler: HumanInteractionHandler | None = None,
         tool_delay_ms: int = 400,
+        auto_init: bool = True,
     ):
         """Initialize the mobile plugin.
 
@@ -55,12 +56,40 @@ class MobilePlugin(DecoratorPlugin):
             controller: Device controller instance
             interaction_handler: Handler for human interaction requests
             tool_delay_ms: Delay after each tool execution in milliseconds
+            auto_init: If True, auto-initialize controller from settings when not provided
         """
         super().__init__()
         self._controller = controller
         self._interaction_handler = interaction_handler or NoOpInteractionHandler()
         self._tool_delay_ms = tool_delay_ms
         self._variables: dict[str, str] = {}
+        self._auto_init = auto_init
+
+    def _init_controller_from_settings(self) -> BaseController | None:
+        """Initialize controller from Odin settings."""
+        try:
+            from odin.config.settings import get_settings
+            from odin.plugins.builtin.mobile.controllers.adb import ADBConfig, ADBController
+            from odin.plugins.builtin.mobile.controllers.hdc import HDCConfig, HDCController
+
+            settings = get_settings()
+
+            if settings.mobile_controller == "adb":
+                config = ADBConfig(
+                    device_id=settings.mobile_device_id,
+                    adb_path=settings.mobile_adb_path,
+                )
+                return ADBController(config)
+            elif settings.mobile_controller == "hdc":
+                config = HDCConfig(
+                    device_id=settings.mobile_device_id,
+                    hdc_path=settings.mobile_hdc_path,
+                )
+                return HDCController(config)
+            else:
+                return None
+        except Exception:
+            return None
 
     def set_controller(self, controller: BaseController) -> None:
         """Set the device controller."""
@@ -71,9 +100,19 @@ class MobilePlugin(DecoratorPlugin):
         self._interaction_handler = handler
 
     def _ensure_controller(self) -> BaseController:
-        """Ensure controller is set and return it."""
+        """Ensure controller is set and return it.
+
+        If no controller is set and auto_init is enabled, attempts to
+        initialize controller from Odin settings.
+        """
+        if self._controller is None and self._auto_init:
+            self._controller = self._init_controller_from_settings()
+
         if self._controller is None:
-            raise RuntimeError("No controller configured. Call set_controller() first.")
+            raise RuntimeError(
+                "No controller configured. Set ODIN_MOBILE_CONTROLLER and "
+                "ODIN_MOBILE_DEVICE_ID in .env, or call set_controller() manually."
+            )
         return self._controller
 
     async def _apply_delay(self) -> None:

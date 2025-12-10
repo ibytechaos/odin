@@ -854,6 +854,145 @@ def version() -> None:
     click.echo("Python agent development framework with MCP, A2A, and AG-UI support")
 
 
+@cli.command()
+@click.argument("task")
+@click.option("--mode", "-m", type=click.Choice(["react", "plan_execute", "hierarchical"]), default=None, help="Agent mode (default: from settings)")
+@click.option("--max-rounds", "-r", type=int, default=None, help="Maximum execution rounds (default: from settings)")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed execution logs")
+def mobile(task: str, mode: str | None, max_rounds: int | None, verbose: bool) -> None:
+    """Run Mobile Agent to automate phone tasks.
+
+    TASK is the natural language description of what you want the agent to do.
+
+    Examples:
+
+        odin mobile "打开微信"
+
+        odin mobile "打开设置，找到WiFi设置"
+
+        odin mobile "打开相机拍一张照片" --mode plan_execute
+
+        odin mobile "滑动屏幕浏览内容" -v
+    """
+    async def _run_mobile():
+        from odin.agents.mobile.factory import create_mobile_agent_from_settings
+        from odin.config.settings import get_settings
+        from odin.plugins.builtin.mobile.interaction import CLIInteractionHandler
+
+        settings = get_settings()
+
+        # Override settings if provided
+        actual_mode = mode or settings.mobile_agent_mode
+        actual_max_rounds = max_rounds or settings.mobile_max_rounds
+
+        click.echo(click.style("Mobile Agent", fg="cyan", bold=True))
+        click.echo()
+        click.echo(f"Task: {click.style(task, fg='yellow')}")
+        click.echo(f"Mode: {actual_mode}")
+        click.echo(f"Device: {settings.mobile_device_id or 'auto'}")
+        click.echo(f"Controller: {settings.mobile_controller}")
+        click.echo(f"Max rounds: {actual_max_rounds}")
+        click.echo()
+
+        # Create agent with CLI interaction handler
+        try:
+            from odin.agents.mobile.factory import (
+                create_controller,
+                create_mobile_agent,
+                create_mobile_plugin,
+            )
+            from openai import AsyncOpenAI
+
+            # Create LLM client
+            llm_client = AsyncOpenAI(
+                api_key=settings.openai_api_key,
+                base_url=settings.openai_base_url,
+            )
+
+            # Create VLM client
+            vlm_client = None
+            if settings.vlm_api_key:
+                vlm_client = AsyncOpenAI(
+                    api_key=settings.vlm_api_key,
+                    base_url=settings.vlm_base_url,
+                )
+
+            # Create controller
+            controller = create_controller(
+                controller_type=settings.mobile_controller,
+                device_id=settings.mobile_device_id,
+                adb_path=settings.mobile_adb_path,
+                hdc_path=settings.mobile_hdc_path,
+            )
+
+            # Check connection
+            connected = await controller.is_connected()
+            if not connected:
+                click.echo(click.style("Error: Device not connected!", fg="red"))
+                raise SystemExit(1)
+
+            width, height = await controller.get_screen_size()
+            click.echo(f"Screen: {width}x{height}")
+            click.echo()
+
+            # Create plugin with CLI interaction handler
+            plugin = create_mobile_plugin(
+                controller=controller,
+                interaction_handler=CLIInteractionHandler(),
+                tool_delay_ms=settings.mobile_tool_delay_ms,
+            )
+
+            # Create agent
+            agent = create_mobile_agent(
+                mode=actual_mode,
+                plugin=plugin,
+                llm_client=llm_client,
+                vlm_client=vlm_client,
+                llm_model=settings.openai_model,
+                vlm_model=settings.vlm_model,
+                max_rounds=actual_max_rounds,
+            )
+
+            click.echo(click.style("Starting execution...", fg="green"))
+            click.echo("-" * 40)
+
+            # Execute agent
+            result = await agent.execute(task)
+
+            click.echo("-" * 40)
+            click.echo()
+
+            # Show result
+            if result.success:
+                click.echo(click.style("✓ Task completed!", fg="green", bold=True))
+            else:
+                click.echo(click.style("✗ Task failed!", fg="red", bold=True))
+
+            click.echo()
+            click.echo(f"Steps: {result.steps_executed}")
+
+            if result.message:
+                click.echo(f"Message: {result.message}")
+
+            if result.error:
+                click.echo(f"Error: {result.error}")
+
+            if verbose and agent.history:
+                click.echo()
+                click.echo(click.style("Execution history:", fg="cyan"))
+                for i, step in enumerate(agent.history, 1):
+                    click.echo(f"  {i}. {step}")
+
+        except Exception as e:
+            click.echo(click.style(f"Error: {e}", fg="red"))
+            if verbose:
+                import traceback
+                traceback.print_exc()
+            raise SystemExit(1)
+
+    asyncio.run(_run_mobile())
+
+
 def main() -> None:
     """Entry point for the CLI."""
     cli()
