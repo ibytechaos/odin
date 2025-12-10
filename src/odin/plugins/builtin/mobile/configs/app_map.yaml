@@ -1,0 +1,100 @@
+# Mobile App Package Mapping Configuration
+# Maps friendly app names and aliases to platform-specific package identifiers
+
+android:
+  wechat:
+    package: com.tencent.mm
+    activity: .ui.LauncherUI
+    aliases:
+      - 微信
+      - WeChat
+      - weixin
+
+  alipay:
+    package: com.eg.android.AlipayGphone
+    activity: .AlipayLogin
+    aliases:
+      - 支付宝
+      - Alipay
+      - zhifubao
+
+  taobao:
+    package: com.taobao.taobao
+    activity: com.taobao.tao.welcome.Welcome
+    aliases:
+      - 淘宝
+      - Taobao
+
+  douyin:
+    package: com.ss.android.ugc.aweme
+    activity: .splash.SplashActivity
+    aliases:
+      - 抖音
+      - TikTok
+      - Douyin
+
+  xiaohongshu:
+    package: com.xingin.xhs
+    activity: .index.v2.IndexActivityV2
+    aliases:
+      - 小红书
+      - RedNote
+      - RED
+
+  meituan:
+    package: com.sankuai.meituan
+    activity: .pt.homepage.activity.MainActivity
+    aliases:
+      - 美团
+      - Meituan
+
+  dianping:
+    package: com.dianping.v1
+    activity: .NovaMainActivity
+    aliases:
+      - 大众点评
+      - Dianping
+
+  qq:
+    package: com.tencent.mobileqq
+    activity: .activity.SplashActivity
+    aliases:
+      - QQ
+      - 腾讯QQ
+
+  weibo:
+    package: com.sina.weibo
+    activity: .SplashActivity
+    aliases:
+      - 微博
+      - Weibo
+      - Sina Weibo
+
+  chrome:
+    package: com.android.chrome
+    activity: com.google.android.apps.chrome.Main
+    aliases:
+      - Chrome
+      - 谷歌浏览器
+
+harmony:
+  wechat:
+    bundle: com.tencent.mm
+    module: entry
+    ability: MainAbility
+    aliases:
+      - 微信
+      - WeChat
+
+ios:
+  wechat:
+    bundle_id: com.tencent.xin
+    aliases:
+      - 微信
+      - WeChat
+
+  alipay:
+    bundle_id: com.alipay.iphoneclient
+    aliases:
+      - 支付宝
+      - Alipay
