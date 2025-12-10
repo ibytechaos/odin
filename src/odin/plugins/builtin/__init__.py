@@ -15,6 +15,7 @@ Available plugins:
 - TrendingPlugin: Hot topics mining from multiple sources
 - ContentPlugin: Content generation and storage (Obsidian, etc.)
 - PublishersPlugin: Multi-platform blog publishing automation
+- MobilePlugin: Mobile device automation tools (Android, Harmony, iOS)
 """
 
 from odin.plugins.builtin.content import ContentPlugin
@@ -22,6 +23,7 @@ from odin.plugins.builtin.gemini import GeminiPlugin
 from odin.plugins.builtin.github import GitHubPlugin
 from odin.plugins.builtin.google import GooglePlugin
 from odin.plugins.builtin.http import HTTPPlugin
+from odin.plugins.builtin.mobile import MobilePlugin
 from odin.plugins.builtin.notebookllm import NotebookLLMPlugin
 from odin.plugins.builtin.publishers import PublishersPlugin
 from odin.plugins.builtin.trending import TrendingPlugin
@@ -34,6 +36,7 @@ __all__ = [
     "GitHubPlugin",
     "GooglePlugin",
     "HTTPPlugin",
+    "MobilePlugin",
     "NotebookLLMPlugin",
     "PublishersPlugin",
     "TrendingPlugin",
@@ -53,6 +56,7 @@ BUILTIN_PLUGINS = {
     "trending": TrendingPlugin,
     "content": ContentPlugin,
     "publishers": PublishersPlugin,
+    "mobile": MobilePlugin,
 }
 
 
