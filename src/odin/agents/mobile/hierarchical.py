@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from odin.agents.mobile.base import AgentResult, AgentStatus, MobileAgentBase
+from odin.agents.mobile.prompts import HIERARCHICAL_PLAN_SYSTEM_PROMPT
 from odin.agents.mobile.react import MobileReActAgent
 
 
@@ -212,21 +213,8 @@ class MobileHierarchicalAgent(MobileAgentBase):
         Returns:
             HierarchicalPlan with sub-tasks
         """
-        system_prompt = """You are a mobile task planner. Break down complex tasks into app-level sub-tasks.
-
-Each sub-task should:
-1. Focus on a single app
-2. Have a clear, achievable objective
-3. Be executable independently
-
-Respond with JSON:
-[
-    {"app": "Camera", "objective": "Take a photo and save it"},
-    {"app": "WeChat", "objective": "Send the saved photo to a contact"}
-]
-
-Common apps: Camera, WeChat, Alipay, Settings, Photos, Browser, etc.
-Keep sub-tasks high-level (the low-level agent will figure out the clicks)."""
+        # Use validated prompt from prompts.py
+        system_prompt = HIERARCHICAL_PLAN_SYSTEM_PROMPT
 
         user_message = f"""Task: {task}
 

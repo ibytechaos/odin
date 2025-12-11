@@ -1,23 +1,32 @@
-"""ReAct agent for mobile automation."""
+"""ReAct agent for mobile automation.
 
+This agent uses the ReAct pattern (Reasoning + Acting) with OpenAI function calling.
+It follows the same approach as the dexter_mobile project, using validated prompts.
+"""
+
+import asyncio
+import base64
 import json
+from datetime import datetime
 from typing import Any
 
 from odin.agents.mobile.base import AgentResult, AgentStatus, MobileAgentBase
+from odin.agents.mobile.prompts import (
+    SCREENSHOT_PROMPT,
+    build_system_prompt,
+    build_task_prompt,
+)
 
 
 class MobileReActAgent(MobileAgentBase):
     """ReAct-style mobile automation agent.
 
-    Implements the ReAct pattern: Reasoning + Acting in a loop.
-    Each round: Screenshot → Think (VLM) → Act (Tool) → Observe
-
-    This is the simplest agent strategy, suitable for straightforward
-    tasks that don't require complex planning.
+    Uses OpenAI function calling with tools from MobilePlugin,
+    following the same approach as the dexter_mobile project.
     """
 
     async def execute(self, task: str) -> AgentResult:
-        """Execute a task using ReAct loop.
+        """Execute a task using ReAct loop with function calling.
 
         Args:
             task: The task description to execute
@@ -28,6 +37,21 @@ class MobileReActAgent(MobileAgentBase):
         self.reset()
         self._status = AgentStatus.RUNNING
         self._log("info", f"Starting task: {task}")
+
+        # Build initial messages with validated prompts
+        datetime_str = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+        system_prompt = build_system_prompt()
+        task_prompt = build_task_prompt(main_task=task, datetime_str=datetime_str)
+
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": [{"type": "text", "text": task_prompt}]},
+        ]
+
+        # Get tools from plugin and convert to OpenAI format
+        tools = await self._plugin.get_tools()
+        openai_tools = [tool.to_openai_format() for tool in tools]
+        self._log("debug", f"Loaded {len(openai_tools)} tools")
 
         try:
             while self._current_round < self._max_rounds:
@@ -42,53 +66,118 @@ class MobileReActAgent(MobileAgentBase):
                 self._current_round += 1
                 self._log("info", f"Round {self._current_round}/{self._max_rounds}")
 
-                # Step 1: Take screenshot and analyze
+                # Take screenshot and add to messages
                 self._log("debug", "Taking screenshot...")
-                screenshot, analysis = await self.take_screenshot_and_analyze(
-                    task=task,
-                    context=self._build_context(),
+                screenshot = await self._plugin._controller.screenshot()  # type: ignore[union-attr]
+                img_b64 = base64.b64encode(screenshot).decode("utf-8")
+
+                # Remove old screenshot messages to save context
+                messages = [m for m in messages if not self._is_screenshot_message(m)]
+
+                # Add new screenshot
+                if self._current_round > 1:
+                    messages.append({
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+                            {"type": "text", "text": SCREENSHOT_PROMPT},
+                        ],
+                    })
+                else:
+                    # First round - add initial screenshot
+                    messages.append({
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+                            {"type": "text", "text": "This is the current screen state."},
+                        ],
+                    })
+
+                # Call LLM with tools
+                self._log("debug", "Calling LLM...")
+                response = await self._llm_client.chat.completions.create(
+                    model=self._llm_model,
+                    messages=messages,  # type: ignore[arg-type]
+                    tools=openai_tools,  # type: ignore[arg-type]
                 )
-                self._log("info", f"Screen: {analysis.description[:100]}...")
 
-                # Step 2: Decide next action using LLM
-                self._log("debug", "Deciding next action...")
-                action = await self._decide_action(task, analysis)
-                self._log("info", f"Action: {action.get('type', 'unknown')}")
+                msg = response.choices[0].message
+                finish_reason = response.choices[0].finish_reason
 
-                # Check if task is complete
-                if action.get("type") == "complete":
+                # Log assistant response
+                if msg.content:
+                    self._log("info", f"Assistant: {msg.content[:100]}...")
+
+                # Add assistant message to history
+                assistant_msg: dict[str, Any] = {"role": "assistant"}
+                if msg.content:
+                    assistant_msg["content"] = msg.content
+                if msg.tool_calls:
+                    assistant_msg["tool_calls"] = [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,  # type: ignore[union-attr]
+                                "arguments": tc.function.arguments,  # type: ignore[union-attr]
+                            },
+                        }
+                        for tc in msg.tool_calls
+                    ]
+                messages.append(assistant_msg)
+
+                # Check if we're done (no tool calls)
+                if not msg.tool_calls or finish_reason != "tool_calls":
                     self._status = AgentStatus.COMPLETED
-                    self._log("info", f"Task completed: {action.get('message', '')}")
+                    self._log("info", "Task completed - no more tool calls")
                     return AgentResult(
                         success=True,
-                        message=action.get("message", "Task completed"),
+                        message=msg.content or "Task completed",
                         steps_executed=self._current_round,
                         final_screenshot=screenshot,
                         variables=self._plugin._variables.copy(),
                     )
 
-                # Check if task failed
-                if action.get("type") == "fail":
-                    self._status = AgentStatus.FAILED
-                    self._log("error", f"Task failed: {action.get('message', '')}")
-                    return AgentResult(
-                        success=False,
-                        message=action.get("message", "Task failed"),
-                        steps_executed=self._current_round,
-                        error=action.get("error"),
+                # Execute tool calls
+                for tool_call in msg.tool_calls:
+                    try:
+                        args = json.loads(tool_call.function.arguments)  # type: ignore[union-attr]
+                    except json.JSONDecodeError:
+                        self._log("warning", f"Failed to parse args: {tool_call.function.arguments}")  # type: ignore[union-attr]
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": "Error: Failed to parse arguments",
+                        })
+                        continue
+
+                    tool_name = tool_call.function.name  # type: ignore[union-attr]
+                    self._log("info", f"Tool: {tool_name}")
+                    self._log("debug", f"Args: {json.dumps(args, ensure_ascii=False)}")
+
+                    # Execute the tool using plugin
+                    try:
+                        result = await self._plugin.execute_tool(tool_name, **args)
+                        result_str = json.dumps(result, ensure_ascii=False)
+                        self._log("debug", f"Result: {result_str[:100]}...")
+                    except Exception as e:
+                        result_str = f"Error: {e!s}"
+                        self._log("error", f"Tool error: {e!s}")
+
+                    # Add tool result to messages
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result_str,
+                    })
+
+                    self._add_to_history(
+                        action=f"{tool_name}: {json.dumps(args, ensure_ascii=False)}",
+                        result={"content": result_str},
                     )
 
-                # Step 3: Execute the action
-                self._log("debug", f"Executing: {json.dumps(action, ensure_ascii=False)}")
-                result = await self._execute_action(action)
-                self._log("debug", f"Result: {result.get('success', False)}")
-
-                # Step 4: Record to history
-                self._add_to_history(
-                    action=json.dumps(action),
-                    result=result,
-                    analysis=analysis,
-                )
+                # Small delay between rounds
+                await asyncio.sleep(0.3)
 
             # Max rounds reached
             self._status = AgentStatus.FAILED
@@ -110,139 +199,14 @@ class MobileReActAgent(MobileAgentBase):
                 error=str(e),
             )
 
-    def _build_context(self) -> str:
-        """Build context from recent history.
-
-        Returns:
-            Context string for VLM
-        """
-        if not self._history:
-            return ""
-
-        # Include last 3 actions for context
-        recent = self._history[-3:]
-        context_parts = []
-        for entry in recent:
-            action = entry.get("action", "")
-            result = entry.get("result", {})
-            success = result.get("success", False)
-            context_parts.append(f"Action: {action} -> {'Success' if success else 'Failed'}")
-
-        return "\n".join(context_parts)
-
-    async def _decide_action(
-        self,
-        task: str,
-        analysis: Any,
-    ) -> dict[str, Any]:
-        """Decide the next action based on screen analysis.
-
-        Args:
-            task: The task being executed
-            analysis: VisionAnalysis from screen
-
-        Returns:
-            Action dict with type and parameters
-        """
-        system_prompt = """You are a mobile automation agent. Based on the task and current screen state, decide the next action.
-
-Available actions:
-- click: {"type": "click", "x": 0.5, "y": 0.5} - Click at position (0-1 normalized)
-- long_press: {"type": "long_press", "x": 0.5, "y": 0.5, "duration_ms": 1000}
-- input_text: {"type": "input_text", "text": "hello", "press_enter": false}
-- scroll: {"type": "scroll", "x1": 0.5, "y1": 0.8, "x2": 0.5, "y2": 0.2} - Scroll up
-- press_key: {"type": "press_key", "key": "back"} - Keys: back, home, enter
-- open_app: {"type": "open_app", "app_name": "微信"}
-- wait: {"type": "wait", "duration_ms": 1000}
-- complete: {"type": "complete", "message": "Task done"} - Task completed successfully
-- fail: {"type": "fail", "message": "Cannot proceed", "error": "reason"}
-
-Respond with a single JSON action. Think step by step about what action will help achieve the task."""
-
-        user_message = f"""Task: {task}
-
-Current screen: {analysis.description}
-Visible elements: {json.dumps(analysis.elements) if analysis.elements else "Not specified"}
-Suggested action: {analysis.suggested_action or "None"}
-Confidence: {analysis.confidence}
-
-Recent history:
-{self._build_context() or "No previous actions"}
-
-What is the next action? Respond with JSON only."""
-
-        response = await self._llm_client.chat.completions.create(
-            model=self._llm_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
-            max_tokens=256,
+    def _is_screenshot_message(self, msg: dict[str, Any]) -> bool:
+        """Check if a message contains a screenshot."""
+        if msg.get("role") != "user":
+            return False
+        content = msg.get("content")
+        if not isinstance(content, list):
+            return False
+        return any(
+            isinstance(part, dict) and part.get("type") == "image_url"
+            for part in content
         )
-
-        content = response.choices[0].message.content or ""
-
-        # Parse JSON action
-        try:
-            json_start = content.find("{")
-            json_end = content.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                result: dict[str, Any] = json.loads(content[json_start:json_end])
-                return result
-        except json.JSONDecodeError:
-            pass
-
-        # Fallback: try to interpret as simple action
-        return {"type": "wait", "duration_ms": 500}
-
-    async def _execute_action(self, action: dict[str, Any]) -> dict[str, Any]:
-        """Execute an action using the plugin.
-
-        Args:
-            action: Action dict with type and parameters
-
-        Returns:
-            Result dict from the tool
-        """
-        action_type = action.get("type", "")
-
-        if action_type == "click":
-            return await self._plugin.click(
-                x=action.get("x", 0.5),
-                y=action.get("y", 0.5),
-                count=action.get("count", 1),
-            )
-
-        elif action_type == "long_press":
-            return await self._plugin.long_press(
-                x=action.get("x", 0.5),
-                y=action.get("y", 0.5),
-                duration_ms=action.get("duration_ms", 1000),
-            )
-
-        elif action_type == "input_text":
-            return await self._plugin.input_text(
-                text=action.get("text", ""),
-                press_enter=action.get("press_enter", False),
-            )
-
-        elif action_type == "scroll":
-            return await self._plugin.scroll(
-                x1=action.get("x1", 0.5),
-                y1=action.get("y1", 0.8),
-                x2=action.get("x2", 0.5),
-                y2=action.get("y2", 0.2),
-                duration_ms=action.get("duration_ms", 300),
-            )
-
-        elif action_type == "press_key":
-            return await self._plugin.press_key(key=action.get("key", "back"))
-
-        elif action_type == "open_app":
-            return await self._plugin.open_app(app_name=action.get("app_name", ""))
-
-        elif action_type == "wait":
-            return await self._plugin.wait(duration_ms=action.get("duration_ms", 1000))
-
-        else:
-            return {"success": False, "error": f"Unknown action type: {action_type}"}

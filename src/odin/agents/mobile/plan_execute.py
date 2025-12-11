@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from odin.agents.mobile.base import AgentResult, AgentStatus, MobileAgentBase
+from odin.agents.mobile.prompts import PLAN_EXECUTE_SYSTEM_PROMPT
 
 
 @dataclass
@@ -213,24 +214,8 @@ class MobilePlanExecuteAgent(MobileAgentBase):
         Returns:
             ExecutionPlan with steps
         """
-        system_prompt = """You are a mobile automation planner. Generate a step-by-step plan to complete the task.
-
-Each step should be a specific action:
-- click: Click at a UI element
-- input_text: Enter text
-- scroll: Scroll the screen
-- press_key: Press a key (back, home, enter)
-- open_app: Open an application
-- wait: Wait for something to load
-
-Respond with a JSON array of steps:
-[
-    {"description": "Open WeChat app", "action_type": "open_app", "parameters": {"app_name": "微信"}},
-    {"description": "Click search button", "action_type": "click", "parameters": {"x": 0.9, "y": 0.05}},
-    {"description": "Enter search text", "action_type": "input_text", "parameters": {"text": "hello"}}
-]
-
-Keep plans concise (3-10 steps). Each step should be atomic and verifiable."""
+        # Use validated prompt from prompts.py
+        system_prompt = PLAN_EXECUTE_SYSTEM_PROMPT
 
         user_message = f"""Task: {task}
 
