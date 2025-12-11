@@ -108,7 +108,8 @@ class Settings(BaseSettings):
     mobile_device_id: str | None = Field(None, validation_alias="ODIN_MOBILE_DEVICE_ID")
     mobile_adb_path: str = "adb"
     mobile_hdc_path: str = "hdc"
-    mobile_agent_mode: Literal["react", "plan_execute", "hierarchical"] = "react"
+    mobile_agent_mode: Literal["react", "plan_execute",
+                               "hierarchical", "dexter"] = "react"
     mobile_max_rounds: int = 50
     mobile_tool_delay_ms: int = 400
 

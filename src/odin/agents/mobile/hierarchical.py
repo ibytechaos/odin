@@ -98,14 +98,9 @@ class MobileHierarchicalAgent(MobileAgentBase):
         self._log("info", f"Starting task: {task}")
 
         try:
-            # Step 1: Take initial screenshot and analyze
-            self._log("debug", "Taking initial screenshot...")
-            _, analysis = await self.take_screenshot_and_analyze(task=task)
-            self._log("info", f"Screen: {analysis.description[:100]}...")
-
-            # Step 2: Generate hierarchical plan
+            # Step 1: Generate hierarchical plan (no screenshot needed for high-level planning)
             self._log("info", "Generating hierarchical plan...")
-            self._plan = await self._generate_hierarchical_plan(task, analysis)
+            self._plan = await self._generate_hierarchical_plan(task)
 
             if not self._plan.sub_tasks:
                 self._status = AgentStatus.FAILED
@@ -170,11 +165,12 @@ class MobileHierarchicalAgent(MobileAgentBase):
                         variables=self._plugin._variables.copy(),
                     )
 
-            # Check completion
+            # Check if completed or max rounds reached
             if self._plan.is_complete:
                 self._status = AgentStatus.COMPLETED
                 self._log("info", "All sub-tasks completed successfully")
-                final_screenshot, _ = await self.take_screenshot_and_analyze(task=task)
+                # Take final screenshot (just for result, no analysis needed)
+                final_screenshot = await self._plugin._controller.screenshot()  # type: ignore[union-attr]
                 return AgentResult(
                     success=True,
                     message="Hierarchical plan executed successfully",
@@ -205,13 +201,11 @@ class MobileHierarchicalAgent(MobileAgentBase):
     async def _generate_hierarchical_plan(
         self,
         task: str,
-        analysis: Any,
     ) -> HierarchicalPlan:
         """Generate a hierarchical plan with app-level sub-tasks.
 
         Args:
             task: Task description
-            analysis: Current screen analysis
 
         Returns:
             HierarchicalPlan with sub-tasks
@@ -221,7 +215,6 @@ class MobileHierarchicalAgent(MobileAgentBase):
 
         user_message = f"""Task: {task}
 
-Current screen: {analysis.description}
 Current variables: {json.dumps(self._plugin._variables) if self._plugin._variables else "None"}
 
 Break this task into app-level sub-tasks. Respond with JSON array only."""

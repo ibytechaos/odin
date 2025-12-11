@@ -1,0 +1,113 @@
+openapi: 3.0.3
+info:
+  title: Title
+  description: Title
+  version: 1.0.0
+servers:
+  - url: 'https'
+paths:
+  /operate:
+    post:
+      summary: 操控.
+      description: Optional extended description in Markdown.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskExecutionRequest'
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskExecutionResponse'
+components:
+  schemas:
+    # >>>>>>> 顶层请求对象 >>>>>>>
+    TaskExecutionRequest:
+      type: object
+      properties:
+        uid:
+          type: string
+          description: 用户id
+        appName:
+          type: string
+          description: 应用名
+        availableAppList:
+          type: array
+          description: 可用应用列表
+        instruction:
+          type: string
+          description: 任务指令
+        screen:
+          type: object
+          description: 屏幕相关信息包括控件树等
+        deviceId:
+          type: string
+          description: 设备id
+        sessionId:
+          type: string
+          description: 小艺sessionId
+        interactionId:
+          type: string
+          description: 交互会话ID
+        deviceInfo:
+          $ref: '#/components/schemas/DeviceInfo'
+        dialogue:
+          type: array
+          description: 对话历史，每轮必传
+          items:
+            $ref: '#/components/schemas/DialogueTurn'
+
+    DialogueTurn:
+      type: object
+      properties:
+        role:
+          type: string
+          example: "user"
+          enum: [ user, assistant, tool]
+        content:
+          type: string
+          example: "tool 包含了操控执行的中间结果和其他工具执行的结果"
+    DeviceInfo:
+      type: object
+      properties:
+        deviceType:
+          type: string
+          example: "ohos"
+        deviceName:
+          type: string
+          example: "phone"
+        manufacturer:
+          type: string
+          example: "HUAWEI"
+        sysVersion:
+          type: string
+          example: "OpenHarmony-5.0.0.56(Beta1)"
+        # >>>>>>> 核心：任务执行响应体 >>>>>>>
+    TaskExecutionResponse:
+      type: object
+      properties:
+        directives:
+          type: array
+          description: "给端的指令列表,follow端云指令定义"
+          items:
+            $ref: '#/components/schemas/Directive'
+        finish:
+          type: boolean
+          description: "任务是否结束"
+        errorCode:
+          type: string
+          description: "正常是0"
+        errorMessage:
+          type: string
+          description: "异常报错信息"
+    Directive:
+      type: object
+      properties:
+        header:
+          type: object
+        payload:
+          type: object
