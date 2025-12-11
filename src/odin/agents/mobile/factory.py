@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from openai import AsyncOpenAI
 
+from odin.agents.mobile.dexter import MobileDexterAgent
 from odin.agents.mobile.hierarchical import MobileHierarchicalAgent
 from odin.agents.mobile.plan_execute import MobilePlanExecuteAgent
 from odin.agents.mobile.react import MobileReActAgent
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
     from odin.plugins.builtin.mobile.controllers.base import BaseController
     from odin.plugins.builtin.mobile.interaction import HumanInteractionHandler
 
-AgentMode = Literal["react", "plan_execute", "hierarchical"]
+AgentMode = Literal["react", "plan_execute", "hierarchical", "dexter"]
 ControllerType = Literal["adb", "hdc", "ios"]
 InteractionType = Literal["cli", "gui", "callback", "noop"]
 
@@ -157,6 +158,16 @@ def create_mobile_agent(
         )
     elif mode == "hierarchical":
         return MobileHierarchicalAgent(
+            plugin=plugin,
+            llm_client=llm_client,
+            vlm_client=vlm_client,
+            llm_model=llm_model,
+            vlm_model=vlm_model,
+            max_rounds=max_rounds,
+            **kwargs,
+        )
+    elif mode == "dexter":
+        return MobileDexterAgent(
             plugin=plugin,
             llm_client=llm_client,
             vlm_client=vlm_client,

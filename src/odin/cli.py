@@ -856,7 +856,7 @@ def version() -> None:
 
 @cli.command()
 @click.argument("task")
-@click.option("--mode", "-m", type=click.Choice(["react", "plan_execute", "hierarchical"]), default=None, help="Agent mode (default: from settings)")
+@click.option("--mode", "-m", type=click.Choice(["react", "plan_execute", "hierarchical", "dexter"]), default=None, help="Agent mode (default: from settings)")
 @click.option("--max-rounds", "-r", type=int, default=None, help="Maximum execution rounds (default: from settings)")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed execution logs")
 def mobile(task: str, mode: str | None, max_rounds: int | None, verbose: bool) -> None:
@@ -872,13 +872,25 @@ def mobile(task: str, mode: str | None, max_rounds: int | None, verbose: bool) -
 
         odin mobile "打开相机拍一张照片" --mode plan_execute
 
+        odin mobile "打开设置，找到WiFi设置并关闭" --mode dexter
+
         odin mobile "滑动屏幕浏览内容" -v
     """
     async def _run_mobile():
+        import logging
+
         from odin.config.settings import get_settings
         from odin.plugins.builtin.mobile.interaction import CLIInteractionHandler
 
         settings = get_settings()
+
+        # Setup logging - use DEBUG level for verbose mode, INFO otherwise
+        log_level = logging.DEBUG if verbose else logging.INFO
+        logging.basicConfig(
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            level=log_level,
+            force=True,  # Override any existing configuration
+        )
 
         # Override settings if provided
         actual_mode = mode or settings.mobile_agent_mode

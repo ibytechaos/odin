@@ -1,8 +1,11 @@
-"""Mobile automation plugin for Odin framework."""
+"""Mobile automation plugin for Odin framework.
+
+Tool definitions are designed to match dexter_mobile project for compatibility.
+"""
 
 import asyncio
 import base64
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from pydantic import Field
 
@@ -26,6 +29,8 @@ class MobilePlugin(DecoratorPlugin):
     Provides tools for controlling mobile devices through various
     controllers (ADB, HDC, iOS). Supports screen interaction,
     app management, and human-in-the-loop operations.
+
+    Tool definitions match dexter_mobile project for compatibility.
     """
 
     @property
@@ -64,6 +69,7 @@ class MobilePlugin(DecoratorPlugin):
         self._tool_delay_ms = tool_delay_ms
         self._variables: dict[str, str] = {}
         self._auto_init = auto_init
+        self._last_screen_size: tuple[int, int] | None = None
 
     def _init_controller_from_settings(self) -> BaseController | None:
         """Initialize controller from Odin settings."""
@@ -120,110 +126,117 @@ class MobilePlugin(DecoratorPlugin):
         if self._tool_delay_ms > 0:
             await asyncio.sleep(self._tool_delay_ms / 1000)
 
-    @tool(description="点击屏幕指定位置")
+    def _map_point_to_pixels(self, point: list[float]) -> tuple[int, int]:
+        """Map normalized coordinates [x, y] to pixel coordinates.
+
+        Supports:
+        - 0-1 range: normalized coordinates
+        - 1-1000 range: per-mille coordinates
+        - >1000: pixel coordinates
+        """
+        if not self._last_screen_size:
+            raise ValueError("No screen size available for coordinate mapping")
+
+        width, height = self._last_screen_size
+        x, y = point[0], point[1]
+
+        px = normalize_coordinate(x, width)
+        py = normalize_coordinate(y, height)
+
+        return int(px), int(py)
+
+    # =========================================================================
+    # Tools matching dexter_mobile format
+    # =========================================================================
+
+    @tool(description="Click at given page coordinates.")
     async def click(
         self,
-        x: Annotated[float, Field(description="X坐标,支持0-1归一化/1-1000千分比/像素值")],
-        y: Annotated[float, Field(description="Y坐标,支持0-1归一化/1-1000千分比/像素值")],
-        count: Annotated[int, Field(description="点击次数")] = 1,
+        point_2d: Annotated[list[float], Field(description="Coordinate as [x, y]", json_schema_extra={"minItems": 2, "maxItems": 2})],
+        userSidePrompt: Annotated[str, Field(description="The user-side prompt, showing what you are doing")],  # noqa: ARG002
+        num_clicks: Annotated[int, Field(description="number of times to click the element")] = 1,
+        button: Annotated[Literal["left", "right", "middle"], Field(description="Mouse button type")] = "left",  # noqa: ARG002
     ) -> dict[str, Any]:
         """Click at the specified screen position."""
         controller = self._ensure_controller()
-        width, height = await controller.get_cached_screen_size()
 
-        px = normalize_coordinate(x, width)
-        py = normalize_coordinate(y, height)
+        # Update screen size cache
+        self._last_screen_size = await controller.get_cached_screen_size()
 
-        for _ in range(count):
+        px, py = self._map_point_to_pixels(point_2d)
+        num_clicks = max(1, num_clicks)
+
+        for i in range(num_clicks):
             await controller.tap(px, py)
-            if count > 1:
+            if i + 1 < num_clicks:
                 await asyncio.sleep(0.1)
 
         await self._apply_delay()
-        return {"success": True, "x": px, "y": py, "count": count}
+        return {
+            "success": True,
+            "message": f"click executed at ({px}, {py}) num_clicks={num_clicks}",
+        }
 
-    @tool(description="长按屏幕指定位置")
-    async def long_press(
+    @tool(description="Input text given page coordinates.")
+    async def input(
         self,
-        x: Annotated[float, Field(description="X坐标")],
-        y: Annotated[float, Field(description="Y坐标")],
-        duration_ms: Annotated[int, Field(description="长按持续时间(毫秒)")] = 1000,
+        text: Annotated[str, Field(description="Text to input")],
+        point_2d: Annotated[list[float], Field(description="Coordinate as [x, y] to focus before input", json_schema_extra={"minItems": 2, "maxItems": 2})],
+        userSidePrompt: Annotated[str, Field(description="The user-side prompt, showing what you are doing")],  # noqa: ARG002
+        enter: Annotated[bool, Field(description="Press enter after input")] = False,
     ) -> dict[str, Any]:
-        """Long press at the specified screen position."""
-        controller = self._ensure_controller()
-        width, height = await controller.get_cached_screen_size()
-
-        px = normalize_coordinate(x, width)
-        py = normalize_coordinate(y, height)
-
-        await controller.long_press(px, py, duration_ms)
-        await self._apply_delay()
-        return {"success": True, "x": px, "y": py, "duration_ms": duration_ms}
-
-    @tool(description="输入文本")
-    async def input_text(
-        self,
-        text: Annotated[str, Field(description="要输入的文本")],
-        press_enter: Annotated[bool, Field(description="输入后是否按回车")] = False,
-    ) -> dict[str, Any]:
-        """Input text on the device."""
+        """Input text at the specified position."""
         controller = self._ensure_controller()
 
+        # Update screen size cache
+        self._last_screen_size = await controller.get_cached_screen_size()
+
+        # Click at position first if provided
+        if point_2d:
+            px, py = self._map_point_to_pixels(point_2d)
+            await controller.tap(px, py)
+            await asyncio.sleep(0.2)
+
+        # Input text
         await controller.input_text(text)
 
-        if press_enter:
+        if enter:
             await controller.press_key("enter")
 
         await self._apply_delay()
-        return {"success": True, "text": text, "press_enter": press_enter}
-
-    @tool(description="滑动屏幕")
-    async def scroll(
-        self,
-        x1: Annotated[float, Field(description="起点X坐标")],
-        y1: Annotated[float, Field(description="起点Y坐标")],
-        x2: Annotated[float, Field(description="终点X坐标")],
-        y2: Annotated[float, Field(description="终点Y坐标")],
-        duration_ms: Annotated[int, Field(description="滑动持续时间(毫秒)")] = 300,
-    ) -> dict[str, Any]:
-        """Swipe/scroll on the screen."""
-        controller = self._ensure_controller()
-        width, height = await controller.get_cached_screen_size()
-
-        px1 = normalize_coordinate(x1, width)
-        py1 = normalize_coordinate(y1, height)
-        px2 = normalize_coordinate(x2, width)
-        py2 = normalize_coordinate(y2, height)
-
-        await controller.swipe(px1, py1, px2, py2, duration_ms)
-        await self._apply_delay()
         return {
             "success": True,
-            "from": {"x": px1, "y": py1},
-            "to": {"x": px2, "y": py2},
-            "duration_ms": duration_ms,
+            "message": f"input executed text='{text}' enter={enter}"
+            + (f" at ({px}, {py})" if point_2d else ""),
         }
 
-    @tool(description="等待指定时间")
+    @tool(
+        description="Wait/pause execution for a specified duration. "
+        "Use this tool when you need to wait for data loading, page rendering, "
+        "or introduce delays between operations."
+    )
     async def wait(
         self,
-        duration_ms: Annotated[int, Field(description="等待时间(毫秒)")],
+        userSidePrompt: Annotated[str, Field(description="The user-side prompt, showing what you are doing")],  # noqa: ARG002
+        duration: Annotated[int, Field(description="Wait duration in milliseconds")] = 500,
     ) -> dict[str, Any]:
         """Wait for the specified duration."""
-        await asyncio.sleep(duration_ms / 1000)
-        return {"success": True, "duration_ms": duration_ms}
+        duration = max(200, min(10000, duration))
+        await asyncio.sleep(duration / 1000)
+        return {"success": True, "message": f"wait executed for {duration} ms"}
 
-    @tool(description="打开应用")
+    @tool(description="Open an app by name (app name will be mapped to package/activity).")
     async def open_app(
         self,
-        app_name: Annotated[str, Field(description="应用名称,支持别名如'微信'/'WeChat'")],
+        appname: Annotated[str, Field(description="Logical app name (mapped to package/activity by the agent).")],
+        userSidePrompt: Annotated[str, Field(description="The user-side prompt, showing what you are doing")],  # noqa: ARG002
     ) -> dict[str, Any]:
         """Open an application by name or alias."""
         controller = self._ensure_controller()
 
         # Try to resolve app name using the mapper
         mapper = get_app_mapper()
-        result = mapper.resolve(app_name, platform="android")
+        result = mapper.resolve(appname, platform="android")
 
         if result:
             _, config = result
@@ -233,18 +246,145 @@ class MobilePlugin(DecoratorPlugin):
                 activity = config.activity
             else:
                 # For other platforms, treat app_name as package name
-                package = app_name
+                package = appname
                 activity = None
         else:
             # Treat as direct package name
-            package = app_name
+            package = appname
             activity = None
 
         await controller.open_app(package, activity)
         await self._apply_delay()
-        return {"success": True, "app": app_name, "package": package}
+        return {
+            "success": True,
+            "message": f"open_app executed appname='{appname}' package='{package}' activity='{activity or ''}'",
+        }
 
-    @tool(description="截图并返回当前屏幕状态")
+    @tool(
+        description="Ask the human user for help or input via CLI; "
+        "the text will be added as a user message and the loop continues."
+    )
+    async def human_interact(
+        self,
+        userSidePrompt: Annotated[str, Field(description="The user-side prompt, showing what you are doing")],  # noqa: ARG002
+        prompt: Annotated[str, Field(description="Display prompts to users")],
+    ) -> dict[str, Any]:
+        """Request human intervention/input."""
+        result = await self._interaction_handler.request_input(
+            prompt=prompt,
+            input_type=InputType.TEXT,
+        )
+
+        error_detail = ""
+        if not result.success:
+            if result.cancelled:
+                error_detail = "cancelled"
+            elif result.timed_out:
+                error_detail = "timed_out"
+            else:
+                error_detail = "unknown_error"
+
+        return {
+            "success": result.success,
+            "value": result.value,
+            "cancelled": result.cancelled,
+            "timed_out": result.timed_out,
+            "message": f"human_interact prompt='{prompt}'"
+            + (f" error='{error_detail}'" if error_detail else ""),
+        }
+
+    @tool(
+        description="Store/read/list shared variables across agents. "
+        "Use when nodes contain input/output attributes."
+    )
+    async def variable_storage(
+        self,
+        operation: Annotated[
+            Literal["read_variable", "write_variable", "list_all_variable"],
+            Field(description="read_variable: get value(s); write_variable: set value; list_all_variable: list keys."),
+        ],
+        name: Annotated[str | None, Field(description="Variable name(s). For read, supports comma-separated list.")] = None,
+        value: Annotated[str | None, Field(description="Value to store when operation is write_variable.")] = None,
+        userSidePrompt: Annotated[str | None, Field(description="The user-side prompt")] = None,  # noqa: ARG002
+    ) -> dict[str, Any]:
+        """Read, write or list shared variables."""
+        if operation == "read_variable":
+            if not name:
+                return {"value": None}
+            keys = [k.strip() for k in name.split(",") if k.strip()]
+            if len(keys) == 1:
+                return {"value": self._variables.get(keys[0])}
+            else:
+                return {"value": {k: self._variables.get(k) for k in keys}}
+
+        elif operation == "write_variable":
+            if not name:
+                return {"error": "write_variable missing name"}
+            self._variables[name] = value or ""
+            return {"message": f"write_variable {name} completed, please continue"}
+
+        elif operation == "list_all_variable":
+            return {"variables": list(self._variables.keys())}
+
+        else:
+            return {"error": f"unsupported operation {operation}"}
+
+    @tool(
+        description="Scroll from start to end coordinates. "
+        "Only scroll down(right) when the content at the bottom(rightmost) exceeds the visible area."
+    )
+    async def scroll(
+        self,
+        point_2d_start: Annotated[list[float], Field(description="Scroll start coordinate as [x, y]", json_schema_extra={"minItems": 2, "maxItems": 2})],
+        point_2d_end: Annotated[list[float], Field(description="Scroll end coordinate as [x, y]", json_schema_extra={"minItems": 2, "maxItems": 2})],
+        userSidePrompt: Annotated[str, Field(description="The user-side prompt, showing what you are doing")],  # noqa: ARG002
+    ) -> dict[str, Any]:
+        """Swipe/scroll on the screen."""
+        controller = self._ensure_controller()
+
+        # Update screen size cache
+        self._last_screen_size = await controller.get_cached_screen_size()
+
+        sx, sy = self._map_point_to_pixels(point_2d_start)
+        ex, ey = self._map_point_to_pixels(point_2d_end)
+
+        await controller.swipe(sx, sy, ex, ey, duration_ms=100)
+
+        # Post-scroll wait to allow content to settle
+        await asyncio.sleep(1.5)
+
+        return {
+            "success": True,
+            "message": f"scroll executed from ({sx},{sy}) to ({ex},{ey})",
+        }
+
+    # =========================================================================
+    # Additional utility tools (not in dexter_mobile)
+    # =========================================================================
+
+    @tool(description="Long press at screen position")
+    async def long_press(
+        self,
+        point_2d: Annotated[list[float], Field(description="Coordinate as [x, y]", json_schema_extra={"minItems": 2, "maxItems": 2})],
+        userSidePrompt: Annotated[str, Field(description="The user-side prompt, showing what you are doing")],  # noqa: ARG002
+        duration_ms: Annotated[int, Field(description="Long press duration in milliseconds")] = 1000,
+    ) -> dict[str, Any]:
+        """Long press at the specified screen position."""
+        controller = self._ensure_controller()
+
+        # Update screen size cache
+        self._last_screen_size = await controller.get_cached_screen_size()
+
+        px, py = self._map_point_to_pixels(point_2d)
+
+        await controller.long_press(px, py, duration_ms)
+        await self._apply_delay()
+        return {
+            "success": True,
+            "message": f"long_press executed at ({px}, {py}) duration={duration_ms}ms",
+        }
+
+    @tool(description="Take screenshot and return current screen state")
     async def screenshot(self) -> dict[str, Any]:
         """Take a screenshot and return as base64."""
         controller = self._ensure_controller()
@@ -253,6 +393,7 @@ class MobilePlugin(DecoratorPlugin):
         base64_data = base64.b64encode(png_bytes).decode("utf-8")
 
         width, height = await controller.get_cached_screen_size()
+        self._last_screen_size = (width, height)
 
         return {
             "success": True,
@@ -262,94 +403,20 @@ class MobilePlugin(DecoratorPlugin):
             "format": "png",
         }
 
-    @tool(description="按键操作")
+    @tool(description="Press hardware/software key")
     async def press_key(
         self,
-        key: Annotated[str, Field(description="按键名称: back/home/enter/volume_up/volume_down")],
+        key: Annotated[str, Field(description="Key name: back/home/enter/volume_up/volume_down")],
+        userSidePrompt: Annotated[str, Field(description="The user-side prompt, showing what you are doing")],  # noqa: ARG002
     ) -> dict[str, Any]:
         """Press a hardware/software key."""
         controller = self._ensure_controller()
 
         await controller.press_key(key)
         await self._apply_delay()
-        return {"success": True, "key": key}
+        return {"success": True, "message": f"press_key executed key={key}"}
 
-    @tool(description="请求人工介入")
-    async def human_interact(
-        self,
-        prompt: Annotated[str, Field(description="提示用户的信息")],
-        input_type: Annotated[
-            str, Field(description="输入类型: text/confirmation/choice")
-        ] = "text",
-        choices: Annotated[list[str] | None, Field(description="选项列表(choice类型时)")] = None,
-        timeout: Annotated[float | None, Field(description="超时时间(秒)")] = None,
-    ) -> dict[str, Any]:
-        """Request human intervention/input."""
-        # Convert string to InputType enum
-        try:
-            input_type_enum = InputType(input_type)
-        except ValueError:
-            input_type_enum = InputType.TEXT
-
-        result = await self._interaction_handler.request_input(
-            prompt=prompt,
-            input_type=input_type_enum,
-            choices=choices,
-            timeout=timeout,
-        )
-
-        return {
-            "success": result.success,
-            "value": result.value,
-            "cancelled": result.cancelled,
-            "timed_out": result.timed_out,
-        }
-
-    @tool(description="读写共享变量")
-    async def variable_storage(
-        self,
-        action: Annotated[str, Field(description="操作: read/write/list/delete")],
-        key: Annotated[str | None, Field(description="变量名")] = None,
-        value: Annotated[str | None, Field(description="变量值(write时)")] = None,
-    ) -> dict[str, Any]:
-        """Read, write, list or delete shared variables."""
-        if action == "read":
-            if key is None:
-                return {"success": False, "error": "Key required for read"}
-            return {
-                "success": True,
-                "key": key,
-                "value": self._variables.get(key),
-                "exists": key in self._variables,
-            }
-
-        elif action == "write":
-            if key is None:
-                return {"success": False, "error": "Key required for write"}
-            if value is None:
-                return {"success": False, "error": "Value required for write"}
-            self._variables[key] = value
-            return {"success": True, "key": key, "value": value}
-
-        elif action == "list":
-            return {
-                "success": True,
-                "variables": list(self._variables.keys()),
-                "count": len(self._variables),
-            }
-
-        elif action == "delete":
-            if key is None:
-                return {"success": False, "error": "Key required for delete"}
-            existed = key in self._variables
-            if existed:
-                del self._variables[key]
-            return {"success": True, "key": key, "deleted": existed}
-
-        else:
-            return {"success": False, "error": f"Unknown action: {action}"}
-
-    @tool(description="检查设备连接状态")
+    @tool(description="Check device connection status")
     async def check_connection(self) -> dict[str, Any]:
         """Check if the device is connected."""
         controller = self._ensure_controller()
@@ -361,5 +428,6 @@ class MobilePlugin(DecoratorPlugin):
         if connected:
             width, height = await controller.get_cached_screen_size()
             result["screen_size"] = {"width": width, "height": height}
+            self._last_screen_size = (width, height)
 
         return result

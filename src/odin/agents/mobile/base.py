@@ -1,11 +1,15 @@
 """Base class for mobile automation agents."""
 
 import base64
+import json
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
@@ -166,6 +170,25 @@ Respond in JSON format:
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}"}}
         )
 
+        # ============ DEBUG: Log full request ============
+        logger.info("=" * 80)
+        logger.info("[DEBUG] LLM REQUEST (analyze_screen)")
+        logger.info("=" * 80)
+        debug_payload = {
+            "model": self._vlm_model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": [
+                    item if item.get("type") != "image_url"
+                    else {"type": "image_url", "image_url": {"url": "[BASE64_TRUNCATED]"}}
+                    for item in user_content
+                ]},
+            ],
+            "max_tokens": 1024,
+        }
+        logger.info(json.dumps(debug_payload, indent=2, ensure_ascii=False))
+        logger.info("=" * 80)
+
         response = await self._vlm_client.chat.completions.create(
             model=self._vlm_model,
             messages=[
@@ -177,10 +200,18 @@ Respond in JSON format:
 
         raw_response = response.choices[0].message.content or ""
 
+        # ============ DEBUG: Log full response ============
+        logger.info("=" * 80)
+        logger.info("[DEBUG] LLM RESPONSE (analyze_screen)")
+        logger.info("=" * 80)
+        debug_response = {
+            "content": raw_response,
+        }
+        logger.info(json.dumps(debug_response, indent=2, ensure_ascii=False))
+        logger.info("=" * 80)
+
         # Parse JSON response
         try:
-            import json
-
             # Try to extract JSON from the response
             json_start = raw_response.find("{")
             json_end = raw_response.rfind("}") + 1

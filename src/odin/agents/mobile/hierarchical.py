@@ -1,8 +1,11 @@
 """Hierarchical agent for mobile automation."""
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from odin.agents.mobile.base import AgentResult, AgentStatus, MobileAgentBase
 from odin.agents.mobile.prompts import HIERARCHICAL_PLAN_SYSTEM_PROMPT
@@ -223,6 +226,21 @@ Current variables: {json.dumps(self._plugin._variables) if self._plugin._variabl
 
 Break this task into app-level sub-tasks. Respond with JSON array only."""
 
+        # ============ DEBUG: Log full request ============
+        logger.info("=" * 80)
+        logger.info("[DEBUG] LLM REQUEST (hierarchical planner)")
+        logger.info("=" * 80)
+        debug_payload = {
+            "model": self._llm_model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "max_tokens": 512,
+        }
+        logger.info(json.dumps(debug_payload, indent=2, ensure_ascii=False))
+        logger.info("=" * 80)
+
         response = await self._llm_client.chat.completions.create(
             model=self._llm_model,
             messages=[
@@ -233,6 +251,16 @@ Break this task into app-level sub-tasks. Respond with JSON array only."""
         )
 
         content = response.choices[0].message.content or ""
+
+        # ============ DEBUG: Log full response ============
+        logger.info("=" * 80)
+        logger.info("[DEBUG] LLM RESPONSE (hierarchical planner)")
+        logger.info("=" * 80)
+        debug_response = {
+            "content": content,
+        }
+        logger.info(json.dumps(debug_response, indent=2, ensure_ascii=False))
+        logger.info("=" * 80)
 
         # Parse JSON plan
         sub_tasks = []

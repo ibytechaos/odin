@@ -97,14 +97,16 @@ def tool(
 
             # Check if required (no default value)
             has_default = param.default != inspect.Parameter.empty
-            field_has_default = field_info is not None and field_info.default is not None
+
+            # Check if Field has default value (use is_required() method)
+            field_has_default = field_info is not None and not field_info.is_required()
 
             is_required = not has_default and not field_has_default
 
             # Get default value (priority: signature > Field)
             if has_default:
                 default = param.default
-            elif field_info is not None and field_info.default is not None:
+            elif field_info is not None and not field_info.is_required():
                 default = field_info.default
             else:
                 default = None
@@ -118,6 +120,15 @@ def tool(
             # Get enum values from Literal type (check both hint and base_type)
             enum_values = _extract_literal_values(hint) or _extract_literal_values(base_type)
 
+            # Extract array items schema for list types
+            array_items = _extract_array_items(base_type)
+
+            # Extract extra JSON schema properties from Field's json_schema_extra
+            extra_schema = None
+            if field_info is not None and field_info.json_schema_extra:
+                if isinstance(field_info.json_schema_extra, dict):
+                    extra_schema = field_info.json_schema_extra
+
             parameters.append(
                 ToolParameter(
                     name=param_name,
@@ -126,6 +137,8 @@ def tool(
                     required=is_required,
                     default=default,
                     enum=enum_values,
+                    items=array_items,
+                    extra=extra_schema,
                 )
             )
 
@@ -173,15 +186,18 @@ def _get_base_type(hint: Any) -> type:
     Returns:
         Base type
     """
+    from typing import Union
+    from types import UnionType
+
     # Handle Annotated[T, ...]
     if get_origin(hint) is Annotated:
         args = get_args(hint)
         if args:
             return _get_base_type(args[0])
 
-    # Handle Optional[T] / Union[T, None]
+    # Handle Optional[T] / Union[T, None] only
     origin = get_origin(hint)
-    if origin is not None:
+    if origin is Union or (isinstance(origin, type) and issubclass(origin, type(None))) or origin is UnionType:
         # For Union types, get the first non-None type
         args = get_args(hint)
         if args:
@@ -189,7 +205,8 @@ def _get_base_type(hint: Any) -> type:
                 if arg is not type(None):
                     return arg
 
-    return hint if isinstance(hint, type) else type(hint) if hint is not None else type(None)
+    # For other generic types like list[float], dict[str, int], return as-is
+    return hint if isinstance(hint, type) or get_origin(hint) is not None else type(hint) if hint is not None else type(None)
 
 
 def _extract_literal_values(hint: Any) -> list[Any] | None:
@@ -327,6 +344,46 @@ def _python_type_to_tool_type(python_type: Any) -> ToolParameterType:
 
     # Default to string
     return ToolParameterType.STRING
+
+
+def _extract_array_items(python_type: Any) -> dict[str, Any] | None:
+    """Extract array item schema from list[T] type annotation.
+
+    Args:
+        python_type: Python type (e.g., list[float], list[str])
+
+    Returns:
+        Item schema dict (e.g., {"type": "number"}) or None if not an array type
+    """
+    origin = get_origin(python_type)
+    if origin is not list and origin is not tuple:
+        return None
+
+    args = get_args(python_type)
+    if not args:
+        # list without type parameter, default to string items
+        return {"type": "string"}
+
+    item_type = args[0]
+
+    # Map Python types to JSON schema types
+    if item_type is str:
+        return {"type": "string"}
+    elif item_type is int:
+        return {"type": "integer"}
+    elif item_type is float:
+        return {"type": "number"}
+    elif item_type is bool:
+        return {"type": "boolean"}
+    elif get_origin(item_type) is list:
+        # Nested array
+        nested_items = _extract_array_items(item_type)
+        return {"type": "array", "items": nested_items} if nested_items else {"type": "array"}
+    elif get_origin(item_type) is dict or item_type is dict:
+        return {"type": "object"}
+    else:
+        # Default to string for unknown types
+        return {"type": "string"}
 
 
 def get_tool_from_function(func: Callable[..., Any]) -> Tool | None:

@@ -214,6 +214,9 @@ class MobilePlanExecuteAgent(MobileAgentBase):
         Returns:
             ExecutionPlan with steps
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         # Use validated prompt from prompts.py
         system_prompt = PLAN_EXECUTE_SYSTEM_PROMPT
 
@@ -223,6 +226,15 @@ Current screen: {analysis.description}
 Visible elements: {json.dumps(analysis.elements) if analysis.elements else "Not specified"}
 
 Generate a plan to complete this task. Respond with JSON array only."""
+
+        # ============ DEBUG: Log full request ============
+        logger.info("=" * 80)
+        logger.info("LLM REQUEST (plan_execute)")
+        logger.info("=" * 80)
+        logger.info(f"Model: {self._llm_model}")
+        logger.info(f"System prompt:\n{system_prompt}")
+        logger.info(f"User message:\n{user_message}")
+        logger.info("=" * 80)
 
         response = await self._llm_client.chat.completions.create(
             model=self._llm_model,
@@ -234,6 +246,13 @@ Generate a plan to complete this task. Respond with JSON array only."""
         )
 
         content = response.choices[0].message.content or ""
+
+        # ============ DEBUG: Log full response ============
+        logger.info("=" * 80)
+        logger.info("LLM RESPONSE (plan_execute)")
+        logger.info("=" * 80)
+        logger.info(f"Content:\n{content}")
+        logger.info("=" * 80)
 
         # Parse JSON plan
         steps = []
@@ -268,43 +287,77 @@ Generate a plan to complete this task. Respond with JSON array only."""
         action_type = step.action_type
         params = step.parameters
 
+        # Build userSidePrompt from step description
+        user_side_prompt = step.description
+
         if action_type == "click":
+            # Support both old (x,y) and new (point_2d) formats
+            if "point_2d" in params:
+                point_2d = params["point_2d"]
+            else:
+                point_2d = [params.get("x", 0.5), params.get("y", 0.5)]
             return await self._plugin.click(
-                x=params.get("x", 0.5),
-                y=params.get("y", 0.5),
-                count=params.get("count", 1),
+                point_2d=point_2d,
+                userSidePrompt=user_side_prompt,
+                num_clicks=params.get("num_clicks", params.get("count", 1)),
             )
 
         elif action_type == "long_press":
+            if "point_2d" in params:
+                point_2d = params["point_2d"]
+            else:
+                point_2d = [params.get("x", 0.5), params.get("y", 0.5)]
             return await self._plugin.long_press(
-                x=params.get("x", 0.5),
-                y=params.get("y", 0.5),
+                point_2d=point_2d,
+                userSidePrompt=user_side_prompt,
                 duration_ms=params.get("duration_ms", 1000),
             )
 
-        elif action_type == "input_text":
-            return await self._plugin.input_text(
+        elif action_type == "input_text" or action_type == "input":
+            # Support both old (input_text) and new (input) names
+            if "point_2d" in params:
+                point_2d = params["point_2d"]
+            else:
+                point_2d = [params.get("x", 0.5), params.get("y", 0.5)]
+            return await self._plugin.input(
                 text=params.get("text", ""),
-                press_enter=params.get("press_enter", False),
+                point_2d=point_2d,
+                userSidePrompt=user_side_prompt,
+                enter=params.get("enter", params.get("press_enter", False)),
             )
 
         elif action_type == "scroll":
+            # Support both old (x1,y1,x2,y2) and new (point_2d_start,point_2d_end) formats
+            if "point_2d_start" in params:
+                point_2d_start = params["point_2d_start"]
+                point_2d_end = params["point_2d_end"]
+            else:
+                point_2d_start = [params.get("x1", 0.5), params.get("y1", 0.8)]
+                point_2d_end = [params.get("x2", 0.5), params.get("y2", 0.2)]
             return await self._plugin.scroll(
-                x1=params.get("x1", 0.5),
-                y1=params.get("y1", 0.8),
-                x2=params.get("x2", 0.5),
-                y2=params.get("y2", 0.2),
-                duration_ms=params.get("duration_ms", 300),
+                point_2d_start=point_2d_start,
+                point_2d_end=point_2d_end,
+                userSidePrompt=user_side_prompt,
             )
 
         elif action_type == "press_key":
-            return await self._plugin.press_key(key=params.get("key", "back"))
+            return await self._plugin.press_key(
+                key=params.get("key", "back"),
+                userSidePrompt=user_side_prompt,
+            )
 
         elif action_type == "open_app":
-            return await self._plugin.open_app(app_name=params.get("app_name", ""))
+            # Support both old (app_name) and new (appname) names
+            return await self._plugin.open_app(
+                appname=params.get("appname", params.get("app_name", "")),
+                userSidePrompt=user_side_prompt,
+            )
 
         elif action_type == "wait":
-            return await self._plugin.wait(duration_ms=params.get("duration_ms", 1000))
+            return await self._plugin.wait(
+                userSidePrompt=user_side_prompt,
+                duration=params.get("duration", params.get("duration_ms", 1000)),
+            )
 
         else:
             return {"success": False, "error": f"Unknown action type: {action_type}"}

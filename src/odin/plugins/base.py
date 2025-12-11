@@ -27,6 +27,8 @@ class ToolParameter(BaseModel):
     required: bool = Field(default=False, description="Whether parameter is required")
     default: Any | None = Field(None, description="Default value")
     enum: list[Any] | None = Field(None, description="Allowed values")
+    items: dict[str, Any] | None = Field(None, description="Array item schema (for array types)")
+    extra: dict[str, Any] | None = Field(None, description="Extra JSON schema properties (minItems, maxItems, etc.)")
 
 
 class Tool(BaseModel):
@@ -56,6 +58,11 @@ class Tool(BaseModel):
                 properties[param.name]["enum"] = param.enum
             if param.default is not None:
                 properties[param.name]["default"] = param.default
+            if param.items:
+                properties[param.name]["items"] = param.items
+            # Merge extra JSON schema properties (minItems, maxItems, etc.)
+            if param.extra:
+                properties[param.name].update(param.extra)
             if param.required:
                 required.append(param.name)
 
@@ -87,6 +94,11 @@ class Tool(BaseModel):
             }
             if param.enum:
                 input_schema["properties"][param.name]["enum"] = param.enum
+            if param.items:
+                input_schema["properties"][param.name]["items"] = param.items
+            # Merge extra JSON schema properties
+            if param.extra:
+                input_schema["properties"][param.name].update(param.extra)
             if param.required:
                 input_schema["required"].append(param.name)
 
