@@ -1018,6 +1018,154 @@ def mobile(task: str, mode: str | None, max_rounds: int | None, verbose: bool) -
     asyncio.run(_run_mobile())
 
 
+@cli.command("mobile-serve")
+@click.option("--host", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)")
+@click.option("--port", "-p", type=int, default=8080, help="Port to bind to (default: 8080)")
+@click.option("--model", "-m", default=None, help="LLM model to use (default: from settings)")
+def mobile_serve(host: str, port: int, model: str | None) -> None:
+    """Start Mobile WebSocket Server for device automation.
+
+    This starts a WebSocket server that exposes the Dexter mobile agent.
+    Devices can connect via WebSocket and send task execution requests.
+
+    Examples:
+
+        odin mobile-serve                    # Start on port 8080
+
+        odin mobile-serve --port 9000        # Custom port
+
+        odin mobile-serve --model gpt-4o     # Use specific model
+    """
+    async def _run_server():
+        from openai import AsyncOpenAI
+
+        from odin.config.settings import get_settings
+        from odin.protocols.mobile import MobileWebSocketServer
+
+        settings = get_settings()
+        actual_model = model or settings.openai_model
+
+        click.echo(click.style("Mobile WebSocket Server", fg="cyan", bold=True))
+        click.echo()
+        click.echo(f"Host: {host}")
+        click.echo(f"Port: {port}")
+        click.echo(f"Model: {actual_model}")
+        click.echo()
+
+        # Create LLM client
+        llm_client = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+        )
+
+        # Create and run server
+        server = MobileWebSocketServer(
+            llm_client=llm_client,
+            llm_model=actual_model,
+        )
+
+        click.echo("Endpoints:")
+        click.echo(f"  WebSocket: ws://{host}:{port}/ws")
+        click.echo(f"  HTTP:      http://{host}:{port}/operate")
+        click.echo(f"  Health:    http://{host}:{port}/health")
+        click.echo()
+        click.echo(click.style("Press Ctrl+C to stop", fg="yellow"))
+
+        try:
+            await server.run(host=host, port=port)
+        except KeyboardInterrupt:
+            click.echo("\nServer stopped.")
+
+    asyncio.run(_run_server())
+
+
+@cli.command("mobile-client")
+@click.option("--task", "-t", required=True, help="Task instruction to execute")
+@click.option("--server", "-s", default="ws://localhost:8080/ws", help="Server WebSocket URL")
+@click.option("--http", is_flag=True, help="Use HTTP endpoint instead of WebSocket")
+@click.option("--session-id", default=None, help="Session ID (auto-generated if not provided)")
+@click.option("--max-rounds", default=50, type=int, help="Maximum interaction rounds")
+@click.option("--controller", "-c", type=click.Choice(["adb", "hdc"]), default=None,
+              help="Controller type (overrides settings)")
+@click.option("--device-id", "-d", default=None, help="Device ID (overrides settings)")
+def mobile_client(
+    task: str,
+    server: str,
+    http: bool,
+    session_id: str | None,
+    max_rounds: int,
+    controller: str | None,
+    device_id: str | None,
+) -> None:
+    """Mobile automation client for cloud testing.
+
+    Connects to Mobile WebSocket Server, sends task requests,
+    receives directives, executes them locally, and sends results back.
+
+    This simulates a mobile device in cloud-testing scenario where:
+    - Server plans actions but cannot directly control the device
+    - Client executes directives locally via HDC/ADB
+    - Client sends execution results back to server
+    - Loop continues until task is complete (ReAct pattern)
+
+    Examples:
+
+        odin mobile-client -t "打开设置"
+
+        odin mobile-client -t "搜索天气" --server ws://192.168.1.100:8080/ws
+
+        odin mobile-client -t "打开微信" --http
+
+        odin mobile-client -t "打开设置" -c hdc -d <device_id>
+    """
+    # Run the client CLI directly
+    async def _run():
+        from odin.protocols.mobile.client import MobileClient, create_controller_from_settings
+        from odin.plugins.builtin.mobile.controllers.adb import ADBConfig, ADBController
+        from odin.plugins.builtin.mobile.controllers.hdc import HDCConfig, HDCController
+
+        # Create controller
+        if controller:
+            if controller == "hdc":
+                config = HDCConfig(device_id=device_id)
+                ctrl = HDCController(config)
+            else:
+                config = ADBConfig(device_id=device_id)
+                ctrl = ADBController(config)
+        else:
+            ctrl = create_controller_from_settings()
+
+        # Check connection
+        click.echo("Checking device connection...")
+        connected = await ctrl.is_connected()
+        if not connected:
+            click.echo(click.style("Device not connected!", fg="red"))
+            raise SystemExit(1)
+        click.echo(click.style("Device connected", fg="green"))
+
+        # Create client
+        client = MobileClient(
+            controller=ctrl,
+            server_url=server,
+            session_id=session_id,
+        )
+
+        # Run task
+        if http:
+            result = await client.run_task_http(task, max_rounds)
+        else:
+            result = await client.run_task(task, max_rounds)
+
+        # Print final result
+        click.echo(f"\n{'='*50}")
+        click.echo("Final Result:")
+        click.echo(f"  Success: {result['success']}")
+        click.echo(f"  Rounds: {result['rounds']}")
+        click.echo(f"  Message: {result['message']}")
+
+    asyncio.run(_run())
+
+
 def main() -> None:
     """Entry point for the CLI."""
     cli()

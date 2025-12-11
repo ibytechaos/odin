@@ -10,8 +10,10 @@ Supports:
 
 from odin.protocols.http import HTTPServer
 from odin.protocols.mcp import MCPServer
+from odin.protocols.mobile import MobileWebSocketServer
 
 __all__ = [
     "HTTPServer",
     "MCPServer",
+    "MobileWebSocketServer",
 ]
