@@ -192,14 +192,21 @@ class HDCController(BaseController):
 
         Args:
             package: Bundle name (e.g., "com.example.app")
-            activity: Ability name (optional, HarmonyOS uses abilities instead of activities)
+            activity: Ability name in format "ModuleName/AbilityName" or just "AbilityName".
+                     If only AbilityName is provided, module defaults to "entry".
+                     If None, defaults to module="entry", ability="EntryAbility".
         """
+        module = "entry"
+        ability = "EntryAbility"
+
         if activity:
-            # Start specific ability
-            await self._run_shell("aa", "start", "-b", package, "-a", activity)
-        else:
-            # Start main ability of the bundle
-            await self._run_shell("aa", "start", "-b", package)
+            # Support "module/Ability" format, else treat as ability name with default module
+            if "/" in activity:
+                module, ability = activity.split("/", 1)
+            else:
+                ability = activity
+
+        await self._run_shell("aa", "start", "-b", package, "-m", module, "-a", ability)
 
     async def is_connected(self) -> bool:
         """Check if device is connected."""

@@ -11,7 +11,7 @@ from pydantic import Field
 
 from odin.decorators.tool import tool
 from odin.plugins.base import DecoratorPlugin
-from odin.plugins.builtin.mobile.configs.app_loader import AndroidAppConfig, get_app_mapper
+from odin.plugins.builtin.mobile.configs.app_loader import AndroidAppConfig, HarmonyAppConfig, get_app_mapper
 from odin.plugins.builtin.mobile.coordinates import normalize_coordinate
 from odin.plugins.builtin.mobile.interaction import (
     HumanInteractionHandler,
@@ -234,16 +234,24 @@ class MobilePlugin(DecoratorPlugin):
         """Open an application by name or alias."""
         controller = self._ensure_controller()
 
+        # Detect platform from controller type
+        from odin.plugins.builtin.mobile.controllers.hdc import HDCController
+
+        platform = "harmony" if isinstance(controller, HDCController) else "android"
+
         # Try to resolve app name using the mapper
         mapper = get_app_mapper()
-        result = mapper.resolve(appname, platform="android")
+        result = mapper.resolve(appname, platform=platform)
 
         if result:
             _, config = result
-            # Handle different config types - only AndroidAppConfig has package/activity
             if isinstance(config, AndroidAppConfig):
                 package = config.package
                 activity = config.activity
+            elif isinstance(config, HarmonyAppConfig):
+                # For Harmony, construct "module/ability" format for activity
+                package = config.bundle
+                activity = f"{config.module}/{config.ability}"
             else:
                 # For other platforms, treat app_name as package name
                 package = appname

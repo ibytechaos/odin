@@ -2,6 +2,13 @@
 # Maps friendly app names and aliases to platform-specific package identifiers
 
 android:
+  settings:
+    package: com.android.settings
+    aliases:
+      - 设置
+      - Settings
+      - 系统设置
+
   wechat:
     package: com.tencent.mm
     activity: .ui.LauncherUI
@@ -78,6 +85,15 @@ android:
       - 谷歌浏览器
 
 harmony:
+  settings:
+    bundle: com.huawei.hmos.settings
+    module: phone_settings
+    ability: com.huawei.hmos.settings.MainAbility
+    aliases:
+      - 设置
+      - Settings
+      - 系统设置
+
   wechat:
     bundle: com.tencent.mm
     module: entry
