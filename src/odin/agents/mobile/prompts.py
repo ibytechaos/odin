@@ -211,6 +211,44 @@ Output result:
     </agent>
   </agents>
 </root>""",
+    """User: 在相册选择本周工作照片，上传到企业微信文件盘，然后将链接贴到Jira移动端某任务的评论里。
+Output result:
+<root>
+  <name>上传工作照片并关联Jira任务</name>
+  <thought>先从系统相册中筛选本周的工作照片，上传到企业微信文件盘获取分享链接，然后在Jira移动端打开指定任务，在评论中粘贴这些链接。</thought>
+  <agents>
+    <agent name="Photos" id="0" dependsOn="">
+      <task>在系统相册中选取本周的工作照片</task>
+      <nodes>
+        <node>打开系统相册 App</node>
+        <node>进入"本周"或按时间分组的视图</node>
+        <node output="workPhotos">筛选并选中本周拍摄的工作相关照片列表</node>
+      </nodes>
+    </agent>
+    <agent name="WeCom" id="1" dependsOn="0">
+      <task>将工作照片上传到企业微信文件盘</task>
+      <nodes>
+        <node>打开企业微信 App</node>
+        <node>进入"文件盘"或"微盘"功能页面</node>
+        <node>选择合适的工作文件夹或创建新文件夹</node>
+        <forEach items="workPhotos">
+          <node input="item">上传当前照片到文件盘目标文件夹</node>
+        </forEach>
+        <node output="fileLinks">获取已上传照片的分享链接列表</node>
+      </nodes>
+    </agent>
+    <agent name="Jira" id="2" dependsOn="1">
+      <task>在Jira任务评论中添加工作照片链接</task>
+      <nodes>
+        <node>打开Jira移动端 App</node>
+        <node>找到目标任务并进入任务详情页</node>
+        <node>进入任务评论编辑界面</node>
+        <node input="fileLinks">将企业微信文件盘的照片链接粘贴到评论内容中</node>
+        <node>提交评论保存修改</node>
+      </nodes>
+    </agent>
+  </agents>
+</root>""",
 ]
 
 PLAN_USER_TEMPLATE = """
