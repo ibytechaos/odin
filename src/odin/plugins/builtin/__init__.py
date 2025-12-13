@@ -16,6 +16,7 @@ Available plugins:
 - ContentPlugin: Content generation and storage (Obsidian, etc.)
 - PublishersPlugin: Multi-platform blog publishing automation
 - MobilePlugin: Mobile device automation tools (Android, Harmony, iOS)
+- PPTConverterPlugin: Convert PowerPoint to HTML presentations
 """
 
 from odin.plugins.builtin.content import ContentPlugin
@@ -25,6 +26,7 @@ from odin.plugins.builtin.google import GooglePlugin
 from odin.plugins.builtin.http import HTTPPlugin
 from odin.plugins.builtin.mobile import MobilePlugin
 from odin.plugins.builtin.notebookllm import NotebookLLMPlugin
+from odin.plugins.builtin.ppt_converter import PPTConverterPlugin
 from odin.plugins.builtin.publishers import PublishersPlugin
 from odin.plugins.builtin.trending import TrendingPlugin
 from odin.plugins.builtin.utilities import UtilitiesPlugin
@@ -38,6 +40,7 @@ __all__ = [
     "HTTPPlugin",
     "MobilePlugin",
     "NotebookLLMPlugin",
+    "PPTConverterPlugin",
     "PublishersPlugin",
     "TrendingPlugin",
     "UtilitiesPlugin",
@@ -57,6 +60,7 @@ BUILTIN_PLUGINS = {
     "content": ContentPlugin,
     "publishers": PublishersPlugin,
     "mobile": MobilePlugin,
+    "ppt_converter": PPTConverterPlugin,
 }
 
 
